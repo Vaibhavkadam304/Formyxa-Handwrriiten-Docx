@@ -1,0 +1,233 @@
+{
+  "jobId": "b7ce7f5e-c376-49c6-b67a-28b1cf645c6c",
+  "filePath": "uploads\\1772382894.198937_legal-notice.png",
+  "source": "scanned",
+  "strict": true,
+  "state": "ready",
+  "contentJson": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "heading",
+        "attrs": {
+          "level": 2,
+          "textAlign": "center"
+        },
+        "content": [
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "bold"
+              }
+            ],
+            "text": "Rawat Advocates & Legal Consultants"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Office: D-133, Ramesh Vihar, Ramghat Road, Aligarh-202001, U. P."
+          },
+          {
+            "type": "hardBreak"
+          },
+          {
+            "type": "text",
+            "text": "Contact: 09462625174 E-mail: deepakchandray.law@gmail.com"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "bold"
+              }
+            ],
+            "text": "POST WITH AD."
+          }
+        ]
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "level": 2,
+          "textAlign": "left"
+        },
+        "content": [
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "bold"
+              }
+            ],
+            "text": "LEGAL NOTICE"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Dated: 28th of September, 2013"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "To,"
+          }
+        ]
+      },
+      {
+        "type": "orderedList",
+        "content": [
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Shri Basant Kumar Agarwal @ Bobby"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Proprietor Firm M/s. Rakesh Electricals & Gift Center"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Shreechandra Market"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Jatari-201373, P.S. Tappal"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "District-Aligarh"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "M/s. Rakesh Electricals & Gift Center"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Through Proprietor Shri Basant Kumar Agarwal @ Bobby"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Shreechandra Market"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Jatari-201373, P.S. Tappal"
+                  },
+                  {
+                    "type": "hardBreak"
+                  },
+                  {
+                    "type": "text",
+                    "text": "District-Aligarh"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Sub: - Legal Notice under Section 138 of the Negotiable Instruments Act, 1881 as amended up to date for payment of Cheque Dishonoured due to insufficient funds"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Dear Sir,"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Under instructions and authority from our client M/S Aura Power Aligarh , a registered proprietorship Firm having Registered office at 31/04 Marris Road, Aligarh -202001, U. P., through its Sole Proprietor Mr. Shivank Garg S/o Shri Rakesh Garg, I serve upon you the following notice of demand under Section 138 of the Negotiable Instruments Act, 1881:"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "1. That My client had supplied you Batteries and UPS of Kevin Power Solutions Ltd as per your order as and when you have demanded on various occasions. On 19-12-2012 total amount due of my client upon you notice was Rs. 78,630/- (Seventy Eight Thousand Six Hundred Thirty Rupees). On 20.12.2012 out of such Rs. 78,630/- you have paid Rs. 10000/- in cash in order to pay another Rs. 16830/- in cash within a month, further in respect of the remaining amount you have issued a cheque bearing No. __________ dated __________ for Rs. __________."
+          }
+        ]
+      }
+    ],
+    "_audit": {
+      "hallucination_risk": "low",
+      "issues_found": [],
+      "corrections_made": [],
+      "illegible_fields": [
+        "Cheque number placeholder",
+        "Cheque date placeholder",
+        "Amount placeholder"
+      ],
+      "pipeline_seconds": 99.2,
+      "engine_version": "v2.0.0"
+    }
+  }
+}
