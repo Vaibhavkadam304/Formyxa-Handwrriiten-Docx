@@ -47,7 +47,7 @@ load_dotenv()
 ENGINE_VERSION     = "v2.0.0"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
-MODEL              = "openai/gpt-4o-mini"
+MODEL = "openai/gpt-4o"  # upgrade from gpt-4o-mini
 MAX_PDF_PAGES      = 20
 
 OCR_HEADERS = {
@@ -199,52 +199,67 @@ def to_png_bytes(raw_bytes: bytes) -> bytes:
 # ─────────────────────────────────────────────────────────────
 
 def stage1_extract_markdown(image_bytes: bytes) -> str:
-    log("STAGE 1 — Visual Anchor")
-    t0  = time.time()
+    log("STAGE 1 — Google Vision OCR")
+    t0 = time.time()
+    
+    # Call Google Vision API directly via REST (no SDK needed)
+    import base64
+    api_key = os.getenv("GOOGLE_VISION_API_KEY")
+    if not api_key:
+        raise RuntimeError("GOOGLE_VISION_API_KEY not set")
+    
     b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-    prompt = """Transcribe this document EXACTLY into Markdown.
-
-Rules:
-- Preserve ALL text exactly as written. Do not paraphrase or summarize.
-- Use Markdown table syntax for any tables (| col | col |).
-- Use **bold** for bold text, *italic* for italic text.
-- Use # / ## / ### for headings based on visual size.
-- Use numbered lists (1. 2. 3.) for numbered items.
-- Visible blanks or fill-in fields must be written as __________.
-- If the document has multiple pages separated by a white gap, insert a
-  Markdown horizontal rule (---) between each page's content.
-
-CRITICAL RULES TO PREVENT HALLUCINATION:
-- Numbers are SACRED. Copy every digit exactly. Never transpose digits.
-  If unsure between 18630 and 16830, write [?] — do NOT guess.
-- DOCUMENT ENDINGS: When a sentence or paragraph runs to the bottom edge of the
-  image, or the text becomes cut off, faded, or partially visible — STOP
-  immediately. Write [DOCUMENT TRUNCATED] at that exact point.
-  DO NOT complete, predict, or infer what the rest of the sentence might say.
-  Even if you are 99% sure how the sentence ends — DO NOT write it.
-  It is ALWAYS better to truncate than to invent even one word.
-- If the document is cut off or text runs off the edge, write:
-  [DOCUMENT TRUNCATED] at the exact point where text ends.
-  NEVER invent or complete a sentence that is not fully visible.
-- If ANY word is blurry or illegible, write [?] — do NOT guess.
-- Output ONLY the Markdown. No explanation. No commentary."""
-
+    
     payload = {
-        "model": MODEL, "temperature": 0, "max_tokens": 4000,
+        "requests": [{
+            "image": {"content": b64},
+            "features": [{"type": "DOCUMENT_TEXT_DETECTION"}]
+        }]
+    }
+    
+    res = requests.post(
+        f"https://vision.googleapis.com/v1/images:annotate?key={api_key}",
+        json=payload,
+        timeout=60
+    )
+    res.raise_for_status()
+    
+    result     = res.json()
+    raw_text   = result["responses"][0].get("fullTextAnnotation", {}).get("text", "")
+    
+    if not raw_text.strip():
+        raise ValueError("Google Vision returned empty text")
+    
+    log("STAGE 1 Vision done", f"{round(time.time()-t0, 2)}s | {len(raw_text)} chars")
+    
+    # Now pass raw text to GPT for FORMATTING ONLY — not reading
+    prompt = f"""Convert this already-extracted text into clean Markdown.
+
+CRITICAL RULES:
+- Use ONLY the text provided below. Do NOT add, invent, or complete ANYTHING.
+- Copy ALL text exactly as given — including [placeholders], [Your Company Name] etc.
+- Square bracket text like [Your Name] must be copied EXACTLY — never replace with underscores.
+- ONLY your job is formatting: headings (#), bold (**), bullets (-), tables (|col|col|)
+- Do NOT complete sentences. Do NOT add words. Do NOT fix grammar.
+- Output ONLY the Markdown. No explanation.
+
+EXTRACTED TEXT:
+{raw_text}"""
+
+    payload2 = {
+        "model": "openai/gpt-4o",
+        "temperature": 0,
+        "max_tokens": 4000,
         "messages": [
-            {"role": "system", "content": "You are a precise document transcription engine. Return clean Markdown only."},
-            {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                {"type": "text", "text": prompt},
-            ]},
+            {"role": "system", "content": "You are a text formatter only. Never invent content."},
+            {"role": "user", "content": prompt},
         ],
     }
-    res = requests.post(OPENROUTER_URL, headers=OCR_HEADERS, json=payload, timeout=90)
-    res.raise_for_status()
-    result = res.json()["choices"][0]["message"]["content"]
-    log("STAGE 1 done", f"{round(time.time()-t0, 2)}s | {len(result)} chars")
-    return result
+    res2 = requests.post(OPENROUTER_URL, headers=OCR_HEADERS, json=payload2, timeout=90)
+    res2.raise_for_status()
+    result2 = res2.json()["choices"][0]["message"]["content"]
+    log("STAGE 1 formatting done", f"{round(time.time()-t0, 2)}s | {len(result2)} chars")
+    return result2
 
 
 # ─────────────────────────────────────────────────────────────
