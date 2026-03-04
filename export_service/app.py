@@ -946,8 +946,11 @@ def render_node(node, document: Document, signatory: Optional[dict] = None):
             for i, child in enumerate(paras):
                 if (child.get("attrs") or {}).get("instructional"): continue
                 content = child.get("content", []) or []
-                if not content or not any(c.get("type") == "text" and c.get("text", "").strip() for c in content):
-                if not any(c.get("type") == "formyxaField" for c in content):
+                if not content:
+                    continue
+                has_text = any(c.get("type") == "text" and c.get("text", "").strip() for c in content)
+                has_field = any(c.get("type") == "formyxaField" for c in content)
+                if not has_text and not has_field:
                     continue
                 p = document.add_paragraph()
                 if i == 0:
@@ -977,8 +980,12 @@ def render_node(node, document: Document, signatory: Optional[dict] = None):
             for i, child in enumerate(paras):
                 if (child.get("attrs") or {}).get("instructional"): continue
                 content = child.get("content", []) or []
-                if not content or not any(c.get("type") == "text" and c.get("text", "").strip() for c in content):
-                if not any(c.get("type") == "formyxaField" for c in content):
+                # NEW (fixed)
+                if not content:
+                    continue
+                has_text = any(c.get("type") == "text" and c.get("text", "").strip() for c in content)
+                has_field = any(c.get("type") == "formyxaField" for c in content)
+                if not has_text and not has_field:
                     continue
                 p = document.add_paragraph()
                 if i == 0:
