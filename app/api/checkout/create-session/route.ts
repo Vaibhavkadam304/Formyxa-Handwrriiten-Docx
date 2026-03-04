@@ -10,7 +10,8 @@ const razorpay = new Razorpay({
 });
 
 // const PRICE_INR = 39900; // ₹399 in paise
-const PRICE_INR = 5900; // ₹59 in paise
+// const PRICE_INR = 5900; // ₹59 in paise
+const PRICE_INR = 100; // ₹1 in paise
 const PRICE_USD = "5.00";
 
 // function getCountry(req: Request) {

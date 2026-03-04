@@ -1,5 +1,3 @@
-
-
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -12,8 +10,10 @@ const ALLOWED_MIME_TYPES = [
   "application/pdf",
 ];
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 const HANDW_API_BASE = process.env.HANDW_API_BASE!;
-const HANDW_API_KEY = process.env.HANDW_API_KEY!;
+const HANDW_API_KEY  = process.env.HANDW_API_KEY!;
 
 export async function POST(req: Request) {
   try {
@@ -24,6 +24,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
+    // ── Type check ──────────────────────────────────────────────────────────
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
         { error: "Please upload PDF, JPG, PNG, or GIF files only." },
@@ -31,10 +32,18 @@ export async function POST(req: Request) {
       );
     }
 
-    /* ───────────────── FILE BUFFER ───────────────── */
+    // ── Size check ───────────────────────────────────────────────────────────
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File "${file.name}" exceeds the 10 MB limit.` },
+        { status: 413 }
+      );
+    }
+
+    // ── Read buffer ──────────────────────────────────────────────────────────
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    /* ───────────────── SEND TO PYTHON BACKEND ───────────────── */
+    // ── Forward to Python backend ────────────────────────────────────────────
     const backendForm = new FormData();
     backendForm.append(
       "file",
@@ -42,16 +51,11 @@ export async function POST(req: Request) {
       file.name
     );
 
-    const uploadRes = await fetch(
-      `${HANDW_API_BASE}/api/upload`,
-      {
-        method: "POST",
-        headers: {
-          "x-api-key": HANDW_API_KEY,
-        },
-        body: backendForm,
-      }
-    );
+    const uploadRes = await fetch(`${HANDW_API_BASE}/api/upload`, {
+      method: "POST",
+      headers: { "x-api-key": HANDW_API_KEY },
+      body: backendForm,
+    });
 
     if (!uploadRes.ok) {
       const txt = await uploadRes.text();
@@ -65,7 +69,7 @@ export async function POST(req: Request) {
       throw new Error("Backend did not return filePath");
     }
 
-    /* ───────────────── PDF TYPE DETECTION ───────────────── */
+    // ── PDF type detection ───────────────────────────────────────────────────
     let pdfType: "digital" | "scanned" = "scanned";
 
     if (file.type === "application/pdf") {
@@ -76,28 +80,23 @@ export async function POST(req: Request) {
         file.name
       );
 
-      const detectRes = await fetch(
-        `${HANDW_API_BASE}/api/detect-pdf-type`,
-        {
-          method: "POST",
-          headers: {
-            "x-api-key": HANDW_API_KEY,
-          },
-          body: detectForm,
-        }
-      );
+      const detectRes = await fetch(`${HANDW_API_BASE}/api/detect-pdf-type`, {
+        method: "POST",
+        headers: { "x-api-key": HANDW_API_KEY },
+        body: detectForm,
+      });
 
       if (!detectRes.ok) {
-        throw new Error("PDF detection failed");
+        throw new Error("PDF type detection failed");
       }
 
       const detectData = await detectRes.json();
-      pdfType = detectData.type;
+      pdfType = detectData.type; // "digital" | "scanned"
     }
 
-    console.log("📄 PDF TYPE:", pdfType);
+    console.log(`📄 [${file.name}] PDF type: ${pdfType}`);
 
-    /* ───────────────── DIGITAL PDF ───────────────── */
+    // ── Response ─────────────────────────────────────────────────────────────
     if (pdfType === "digital") {
       return NextResponse.json({
         mode: "digital",
@@ -105,7 +104,6 @@ export async function POST(req: Request) {
       });
     }
 
-    /* ───────────────── SCANNED ───────────────── */
     return NextResponse.json({
       mode: "scanned",
       jobId: crypto.randomUUID(),

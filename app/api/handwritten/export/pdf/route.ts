@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   const pythonUrl =
-    process.env.PY_EXPORT_PDF_URL || "http://localhost:8000/export/pdf";
+    process.env.PY_EXPORT_PDF_URL || "https://formyxa-backend.onrender.com/export/pdf";
 
   try {
     const body = await req.json();

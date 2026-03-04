@@ -146,7 +146,7 @@ const FontSizeMark = Mark.create({
 });
 
 // ---------------------------------------------------------------------
-// Underline mark (so toolbar works without extra package)
+// Underline mark
 // ---------------------------------------------------------------------
 const UnderlineMark = Mark.create({
   name: "underline",
@@ -224,7 +224,6 @@ export function JsonEditor({
   const [localFileName, setLocalFileName] = useState(fileName);
   const [docJson, setDocJson] = useState<any>(safeInitialDoc);
 
-  // keep local zoom for full chrome; in canvas it’s controlled by parent
   const [localZoom, setLocalZoom] = useState(1);
   const zoom = zoomProp ?? localZoom;
 
@@ -243,7 +242,7 @@ export function JsonEditor({
       TextStyle,
       Color,
       Highlight,
-      LineHeight, // ✅ add this
+      LineHeight,
 
       Table.configure({ resizable: true }),
       TableRow,
@@ -255,13 +254,12 @@ export function JsonEditor({
       FontSizeMark,
       UnderlineMark,
       PageBreak,
-      
     ],
     content: DEFAULT_DOC,
     editable,
     immediatelyRender: false,
     onUpdate: ({ editor }) => {
-      if (!onDocChange) return; // 👈 preview-safe
+      if (!onDocChange) return;
 
       const json = editor.getJSON();
       setDocJson(json);
@@ -269,12 +267,10 @@ export function JsonEditor({
     },
   });
 
-  // expose editor to parent
   useEffect(() => {
     if (editor) onEditorReady?.(editor);
   }, [editor, onEditorReady]);
 
-  // init content once
   useEffect(() => {
     if (!editor) return;
     if (!safeInitialDoc) return;
@@ -336,7 +332,7 @@ export function JsonEditor({
   // -------------------- CANVAS (Figma-style) --------------------
   if (isCanvas) {
     return (
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="w-full py-8 px-4">
         <div id="formyxa-doc-top" />
         <div className="max-w-[8.5in] mx-auto">
           {layout.shellVariant === "page" ? (
@@ -350,25 +346,16 @@ export function JsonEditor({
                 zoom={zoom}
               />
             ) : (
-         <div
-            className="
-              bg-white
-              rounded-[6px]
-              shadow-[0_1px_2px_rgba(0,0,0,0.06),_0_8px_24px_rgba(0,0,0,0.08)]
-              p-16
-              min-h-[11in]
-              flex
-              items-center
-              justify-center
-            "
-            style={{ zoom }}
-          >
-            <p className="text-sm text-slate-400">Loading…</p>
-          </div>
+              <div
+                className="bg-white p-16 min-h-[11in] flex items-center justify-center"
+                style={{ zoom }}
+              >
+                <p className="text-sm text-slate-400">Loading…</p>
+              </div>
             )
           ) : (
             <div
-              className="bg-white rounded-2xl shadow-lg p-16 min-h-[11in]"
+              className="bg-white p-16 min-h-[11in]"
               style={{ zoom }}
             >
               {editor ? <EditorContent editor={editor} className="tiptap" /> : <p className="text-sm text-slate-400">Loading…</p>}
@@ -445,12 +432,12 @@ export function JsonEditor({
         </div>
       </header>
 
-      {effectiveMode === "document" ? ( 
+      {effectiveMode === "document" ? (
         <main
-            className="flex-1 flex justify-center items-start overflow-auto pl-2 pr-4 bg-slate-50"
-            style={{ paddingBottom: "40vh" }}
-          >
-          <div className="bg-slate-200/80 rounded-xl p-4">
+          className="flex-1 flex justify-center items-start overflow-auto pl-2 pr-4 bg-slate-50"
+          style={{ paddingBottom: "40vh" }}
+        >
+          <div className="py-6">
             {layout.shellVariant === "page" ? (
               editor ? (
                 <DocumentPageShell
@@ -462,26 +449,15 @@ export function JsonEditor({
                   zoom={zoom}
                 />
               ) : (
-                <div className="bg-white rounded-md mx-auto w-[794px] min-h-[1123px] flex items-center justify-center">
+                <div className="bg-white mx-auto w-[794px] min-h-[1123px] flex items-center justify-center">
                   <p className="text-sm text-slate-400">Loading…</p>
                 </div>
               )
             ) : (
               <div
-                  className="
-                    bg-white
-                    rounded-[6px]
-                    shadow-[0_1px_2px_rgba(0,0,0,0.06),_0_8px_24px_rgba(0,0,0,0.08)]
-                    mx-auto
-                    w-[794px]
-                    min-h-[1123px]
-                    px-14
-                    py-10
-                    flex
-                    flex-col
-                  "
-                  style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}
-                >
+                className="bg-white mx-auto w-[794px] min-h-[1123px] px-14 py-10 flex flex-col"
+                style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}
+              >
                 {editor ? <EditorContent editor={editor} className="tiptap" /> : <p className="text-sm text-slate-400">Loading…</p>}
               </div>
             )}
@@ -491,15 +467,7 @@ export function JsonEditor({
         <main className="flex-1 flex overflow-hidden bg-slate-50">
           <div className="flex-1 overflow-auto py-6 px-4">
             <div className="max-w-3xl mx-auto">
-              <div
-                  className="
-                    bg-white
-                    rounded-[6px]
-                    shadow-[0_1px_2px_rgba(0,0,0,0.06),_0_8px_24px_rgba(0,0,0,0.08)]
-                    px-8
-                    py-8
-                  "
-                >
+              <div className="bg-white px-8 py-8">
                 {editor ? <EditorContent editor={editor} className="tiptap" /> : <p className="text-sm text-slate-400">Loading…</p>}
               </div>
             </div>
