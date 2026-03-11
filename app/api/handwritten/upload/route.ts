@@ -15,6 +15,41 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const HANDW_API_BASE = process.env.HANDW_API_BASE!;
 const HANDW_API_KEY  = process.env.HANDW_API_KEY!;
 
+// ── Render cold-start poller ─────────────────────────────────────────────────
+// Render free/starter instances sleep after inactivity. A single wake-up fetch
+// fails with ConnectTimeoutError because the OS TCP connect itself times out
+// (Node/undici default: 10 s) before AbortSignal fires.
+// We poll the /docs health endpoint up to MAX_WAIT_MS, waiting POLL_INTERVAL_MS
+// between attempts, so the server has time to fully start before we upload.
+async function waitForBackend(
+  maxWaitMs = 90_000,
+  pollIntervalMs = 5_000
+): Promise<void> {
+  const deadline = Date.now() + maxWaitMs;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    attempt++;
+    try {
+      // 12 s per attempt — longer than the 10 s undici connect timeout so
+      // we always get at least one full TCP-connect attempt per poll cycle.
+      const res = await fetch(`${HANDW_API_BASE}/docs`, {
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (res.ok || res.status < 500) {
+        console.log(`✅ Backend awake after ${attempt} attempt(s)`);
+        return; // server is up
+      }
+    } catch {
+      // connect timeout or network error — server still waking up
+    }
+    console.log(`⏳ Backend not ready (attempt ${attempt}), retrying in ${pollIntervalMs / 1000}s…`);
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+  throw new Error(
+    "Backend did not become available in time. The server may be starting up — please try again in a moment."
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -43,6 +78,12 @@ export async function POST(req: Request) {
     // ── Read buffer ──────────────────────────────────────────────────────────
     const buffer = Buffer.from(await file.arrayBuffer());
 
+    // ── Wake up backend (handles Render cold starts) ─────────────────────────
+    // Skip polling for local dev — localhost is always up
+    if (!HANDW_API_BASE.includes("localhost") && !HANDW_API_BASE.includes("127.0.0.1")) {
+      await waitForBackend();
+    }
+
     // ── Forward to Python backend ────────────────────────────────────────────
     const backendForm = new FormData();
     backendForm.append(
@@ -55,6 +96,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "x-api-key": HANDW_API_KEY },
       body: backendForm,
+      signal: AbortSignal.timeout(120_000), // 2 min — server is awake now
     });
 
     if (!uploadRes.ok) {

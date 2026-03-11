@@ -26,7 +26,23 @@ export async function GET(req: Request) {
 
   const text = await res.text();
 
-  return new Response(text, {
+  // Normalize Python backend state names so the frontend always gets consistent values:
+  // Python:   "ready"  → Frontend: "ready"   (was being confused with "completed")
+  // Python:   "error"  → Frontend: "error"   (was being confused with "failed")
+  // No rename needed — just pass through, but we ensure state is always present.
+  let body = text;
+  try {
+    const parsed = JSON.parse(text);
+    // Map old-style status checks to the canonical `state` field
+    if (parsed.state && !parsed.status) {
+      parsed.status = parsed.state; // expose as both fields for compatibility
+      body = JSON.stringify(parsed);
+    }
+  } catch {
+    // not JSON, pass through as-is
+  }
+
+  return new Response(body, {
     status: res.status,
     headers: { "Content-Type": "application/json" },
   });

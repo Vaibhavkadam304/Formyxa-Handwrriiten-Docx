@@ -33,11 +33,11 @@ export default function HandwrittenToDocPage() {
               </div> */}
 
               <h1 className="text-3xl md:text-4xl lg:text-6xl font-semibold tracking-tight text-balance leading-tight">
-                Turn handwritten and scanned documents into clean, editable Word files
+                "Stop Retyping. Turn Messy Legal & Professional Scans into Perfect Word Docs in Seconds.
               </h1>
 
               <p className="text-base md:text-lg text-muted-foreground leading-snug max-w-lg">
-                Convert handwritten pages, scanned forms, and PDFs into clean, structured Word documents — fully editable and ready for official use.
+               Keep the "fully editable and ready for official use" line—that’s a high-trust signal.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 pt-1">

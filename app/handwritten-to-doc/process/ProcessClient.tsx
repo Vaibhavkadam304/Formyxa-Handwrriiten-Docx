@@ -131,6 +131,7 @@ export default function ProcessPage() {
   const [jobState, setJobState]       = useState<JobState>("processing");
   const [currentFile, setCurrentFile] = useState(1);
   const [totalFiles, setTotalFiles]   = useState(1);
+  const [errorMsg, setErrorMsg]       = useState<string | null>(null);
 
   // ── EFFECT 1: one-shot guard ─────────────────────────────────────────────
   // Runs only when jobId changes. Never triggered by state updates or router
@@ -201,14 +202,16 @@ export default function ProcessPage() {
         const res = await fetch(`/api/job-status?jobId=${jobId}`);
         if (!res.ok) return;
 
-        const data = await res.json() as { state: string; contentJson?: any };
+        const data = await res.json() as { state?: string; status?: string; contentJson?: any; detail?: string };
+        // Python uses "state". "uploaded"/"queued" are interim — display as processing.
+        const rawState = (data.state ?? data.status ?? "") as JobState;
+        console.log("[process] poll state=" + rawState);
+        const displayState: JobState =
+          (rawState === "uploaded" || rawState === "queued") ? "processing" : rawState || "processing";
+        updateJob({ state: displayState as any });
+        setJobState(displayState);
 
-        // Only patch state — don't overwrite filePath or other fields
-        // Don't patch contentJson here either; we handle it explicitly below
-        updateJob({ state: data.state as any });
-        setJobState(data.state as JobState);
-
-        if (data.state === "ready" && data.contentJson) {
+        if (rawState === "ready" && data.contentJson) {
           clearInterval(intervalRef.current!);
           intervalRef.current = null;
 
@@ -234,26 +237,22 @@ export default function ProcessPage() {
             // ✅ All jobs done
             const allDocs   = popAllCompletedDocs();
             const mergedDoc = mergeTipTapDocs(allDocs);
-
-            // ✅ Store merged doc in sessionStorage (avoids localStorage quota crash)
-            //    PreviewClient reads "handwritten_preview_doc" first before localStorage
             saveMergedDocForPreview(mergedDoc);
-
-            // Only update state in localStorage — not the large merged doc
             updateJob({ state: "ready" });
-
             routerRef.current.replace(
               `/handwritten-to-doc/preview?jobId=${jobId}`
             );
           }
-        }
-
-        if (data.state === "error") {
+        } else if (rawState === "error") {
           clearInterval(intervalRef.current!);
           intervalRef.current = null;
           sessionStorage.removeItem("handwritten_completed_docs");
           sessionStorage.removeItem("handwritten_preview_doc");
-          routerRef.current.replace("/handwritten-to-doc/upload");
+          setErrorMsg(
+            data.detail ??
+            "OCR failed on the server. Check Python logs for: " +
+            "missing GOOGLE_VISION_API_KEY / OPENROUTER_API_KEY, or file not found."
+          );
         }
       } catch (err) {
         console.error("❌ Polling error:", err);
@@ -267,6 +266,34 @@ export default function ProcessPage() {
       }
     };
   }, [jobId]);
+
+  if (errorMsg) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 flex items-center justify-center bg-muted/30 px-4">
+          <div className="max-w-lg w-full bg-white rounded-xl shadow-md p-8 space-y-5 border border-red-100">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">❌</span>
+              <h2 className="text-xl font-semibold text-red-600">Processing Failed</h2>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">{errorMsg}</p>
+            <details className="text-xs text-slate-400 border rounded p-2">
+              <summary className="cursor-pointer select-none">Debug info</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-all">jobId: {jobId}</pre>
+            </details>
+            <button
+              onClick={() => routerRef.current.replace("/handwritten-to-doc/upload")}
+              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -10,6 +10,7 @@ import { loadJob, updateJob } from "@/lib/jobStore";
 import type { JobData } from "@/types/job";
 import { generateHTML } from "@tiptap/html";
 import StarterKit from "@tiptap/starter-kit";
+import { BeforeAfterSlider } from "@/components/BeforeAfterSlider"; // ← new import
 
 export default function PreviewPage() {
   const router = useRouter();
@@ -53,8 +54,6 @@ export default function PreviewPage() {
       router.replace("/handwritten-to-doc/upload"); return;
     }
 
-    // ✅ Multi-file path: ProcessClient stores the merged doc in sessionStorage
-    //    to avoid localStorage QuotaExceededError. Check there first.
     const previewRaw = typeof window !== "undefined"
       ? sessionStorage.getItem("handwritten_preview_doc")
       : null;
@@ -62,23 +61,17 @@ export default function PreviewPage() {
     if (previewRaw) {
       try {
         const mergedDoc = JSON.parse(previewRaw);
-        // Consume it — don't leave stale data for the next session
         sessionStorage.removeItem("handwritten_preview_doc");
         const wordCount = countWordsFromTipTap(mergedDoc);
-        // Persist to localStorage now that we know it fits (or skip if too large)
-        try {
-          updateJob({ contentJson: mergedDoc, wordCount });
-        } catch { /* quota — we'll just use in-memory state */ }
+        try { updateJob({ contentJson: mergedDoc, wordCount }); } catch { /* quota */ }
         setJob({ ...storedJob, contentJson: mergedDoc, wordCount });
         return;
       } catch (e) {
         console.error("❌ Failed to parse preview doc from sessionStorage:", e);
         sessionStorage.removeItem("handwritten_preview_doc");
-        // Fall through to normal paths
       }
     }
 
-    // ✅ Single-file path: contentJson already in localStorage
     if (storedJob.contentJson) {
       const wordCount = countWordsFromTipTap(storedJob.contentJson);
       updateJob({ wordCount });
@@ -86,7 +79,6 @@ export default function PreviewPage() {
       return;
     }
 
-    // Fallback: fetch from server
     (async () => {
       try {
         const contentJson = await fetchResult(jobId);
@@ -122,10 +114,6 @@ export default function PreviewPage() {
     }
     capturePayPal();
   }, [jobId, searchParams]);
-
-  function tiptapToHtml(doc: any) {
-    return generateHTML(doc, [StarterKit]);
-  }
 
   /* ================= DOWNLOAD ================= */
   const handleDownload = async (type: "docx" | "pdf" = "docx") => {
@@ -227,33 +215,31 @@ export default function PreviewPage() {
           <section className="mx-auto max-w-7xl px-6 py-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
 
-              {/* LEFT — document preview, grows with content */}
+              {/* ── LEFT — document area ───────────────────────────────── */}
               <div className="lg:col-span-8 flex flex-col gap-4">
-                <div className="relative">
 
-                  {!isPaid && (
-                    <p className="px-6 py-3 text-xs text-slate-500 border-b bg-slate-50">
-                      Preview may contain minor recognition errors. Final document can be edited.
-                    </p>
-                  )}
-
-                  {!isPaid && (
-                    <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center pt-32">
-                      <span className="rotate-[-25deg] text-4xl font-semibold tracking-widest text-slate-300/30">
-                        PREVIEW
-                      </span>
-                    </div>
-                  )}
-
-                  <JsonEditor
-                    initialDoc={job.contentJson}
-                    chrome="canvas"
-                    editable={false}
+                {/* ── BEFORE / AFTER slider (unpaid preview) ── */}
+                {!isPaid && job.contentJson && (
+                  <BeforeAfterSlider
+                    contentJson={job.contentJson}
+                    // Pass originalImageUrl if your JobData carries it:
+                    // originalImageUrl={job.originalImageUrl}
                   />
-                </div>
+                )}
+
+                {/* ── Full editor (after payment) ── */}
+                {isPaid && (
+                  <div className="relative">
+                    <JsonEditor
+                      initialDoc={job.contentJson}
+                      chrome="canvas"
+                      editable={false}
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* RIGHT — sticky sidebar */}
+              {/* ── RIGHT — sticky sidebar ─────────────────────────────── */}
               <div className="lg:col-span-4">
                 <div className="sticky top-6 space-y-7">
 
@@ -274,6 +260,12 @@ export default function PreviewPage() {
                         </button>
                         <p className="mt-3 text-center text-xs text-slate-500">
                           One-time payment • Download or edit after unlock
+                        </p>
+                        {/* ── Social proof ── */}
+                        <p className="mt-2 text-center text-xs text-slate-400">
+                          Used by{" "}
+                          <span className="font-semibold text-slate-600">500+ legal professionals</span>{" "}
+                          this month
                         </p>
                       </>
                     ) : (
@@ -321,7 +313,7 @@ export default function PreviewPage() {
             </div>
           </section>
 
-          {/* PAYMENT MODAL */}
+          {/* ── PAYMENT MODAL ───────────────────────────────────────────── */}
           {showPayConfirm && pendingType && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-slate-200">

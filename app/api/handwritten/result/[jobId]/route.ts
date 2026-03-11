@@ -57,16 +57,21 @@ export async function GET(
 
   const data = await res.json();
 
-  if (data.status === "queued" || data.status === "processing") {
-    return NextResponse.json(data, { status: 200 });
+  // Python backend uses `state` field (not `status`) with values:
+  // "uploaded" → "queued" → "processing" → "ready" | "error"
+  const jobState = data.state;
+
+  if (jobState === "uploaded" || jobState === "queued" || jobState === "processing") {
+    return NextResponse.json({ ...data, status: jobState }, { status: 200 });
   }
 
-  if (data.status === "failed") {
-    return NextResponse.json(data, { status: 500 });
+  if (jobState === "error") {
+    return NextResponse.json({ ...data, status: "failed" }, { status: 500 });
   }
 
-  if (data.status === "completed") {
-    if (!data.document || data.document.type !== "doc") {
+  if (jobState === "ready") {
+    // contentJson is stored directly on the job (not under data.document)
+    if (!data.contentJson || data.contentJson.type !== "doc") {
       return NextResponse.json(
         { error: "Invalid document returned", data },
         { status: 500 }
@@ -76,14 +81,20 @@ export async function GET(
     return NextResponse.json(
       {
         status: "completed",
-        contentJson: data.document,
+        state: "ready",
+        contentJson: data.contentJson,
       },
       { status: 200 }
     );
   }
 
+  // free-ready = digital PDF fast path
+  if (jobState === "free-ready") {
+    return NextResponse.json({ ...data, status: "free-ready" }, { status: 200 });
+  }
+
   return NextResponse.json(
-    { error: "Unknown job state", data },
+    { error: "Unknown job state", state: jobState, data },
     { status: 500 }
   );
 }
