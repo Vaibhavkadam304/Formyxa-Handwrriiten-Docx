@@ -3,6 +3,32 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { generateHTML } from "@tiptap/html";
 import StarterKit from "@tiptap/starter-kit";
+import TextAlign from "@tiptap/extension-text-align";
+import { TextStyle } from "@tiptap/extension-text-style";
+import { Mark } from "@tiptap/core";
+
+// ─── Inline mark extensions (mirrors JsonEditor) ─────────────────────────────
+const UnderlineMark = Mark.create({
+  name: "underline",
+  parseHTML() { return [{ tag: "u" }, { style: "text-decoration" }]; },
+  renderHTML() { return ["u", 0]; },
+});
+
+const FontSizeMark = Mark.create({
+  name: "fontSize",
+  addAttributes() {
+    return {
+      size: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.style.fontSize || null,
+        renderHTML: (attrs: { size?: string | null }) =>
+          attrs.size ? { style: `font-size: ${attrs.size}` } : {},
+      },
+    };
+  },
+  parseHTML() { return [{ style: "font-size" }]; },
+  renderHTML({ HTMLAttributes }) { return ["span", HTMLAttributes, 0]; },
+});
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface BeforeAfterSliderProps {
@@ -12,10 +38,16 @@ interface BeforeAfterSliderProps {
   originalImageUrl?: string;
 }
 
-// ─── Helper ──────────────────────────────────────────────────────────────────
+// ─── Helper — now uses same extensions as JsonEditor ─────────────────────────
 function tiptapToHtml(doc: any): string {
   try {
-    return generateHTML(doc, [StarterKit]);
+    return generateHTML(doc, [
+      StarterKit,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      TextStyle,
+      UnderlineMark,
+      FontSizeMark,
+    ]);
   } catch {
     return "<p>Unable to render preview.</p>";
   }

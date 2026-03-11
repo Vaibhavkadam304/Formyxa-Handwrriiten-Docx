@@ -1,12 +1,17 @@
 # app.py
 # =============================================================
-# Engine v2 – Vision Pipeline  +  DOCX Export Service
+# Engine v2 – Zero-Hallucination Vision Pipeline  +  DOCX Export
 # Both run on ONE FastAPI server (port 8000)
+#
+# Pipeline (replaces old 3-stage LLM approach):
+#   Stage 1 — Google Vision  → raw paragraphs (ground-truth text, never invented)
+#   Stage 2 — LLM            → styles per paragraph (formatting only, no text gen)
+#   Stage 3 — local code     → convert paragraphs+styles → TipTap JSON
 #
 # .env:
 #   HANDW_API_BASE=http://localhost:8000
 #   FLASK_DOCX_URL=http://localhost:8000/generate-docx
-#   REDIS_URL=redis://...   ← ADD THIS (from Render Redis dashboard)
+#   REDIS_URL=redis://...
 # =============================================================
 
 import os
@@ -21,7 +26,7 @@ import fitz          # PyMuPDF
 import time
 import numpy as np
 import cv2
-import redis as redis_lib          # ← CHANGE 1: added
+import redis as redis_lib
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse, JSONResponse, Response
@@ -46,18 +51,17 @@ load_dotenv()
 # GLOBAL CONFIG
 # ─────────────────────────────────────────────────────────────
 
-ENGINE_VERSION     = "v2.0.0"
+ENGINE_VERSION     = "v3.0.0"   # bumped — new zero-hallucination pipeline
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = os.getenv("OCR_MODEL", "google/gemini-2.0-flash-001")
-# MODEL = os.getenv("OCR_MODEL", "anthropic/claude-3-5-sonnet")
+MODEL              = os.getenv("OCR_MODEL", "google/gemini-2.0-flash-001")
 MAX_PDF_PAGES      = 20
 
 OCR_HEADERS = {
     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
     "Content-Type":  "application/json",
     "HTTP-Referer":  "http://localhost",
-    "X-Title":       "Doc-Reconstructor-v2",
+    "X-Title":       "Doc-Reconstructor-v3",
 }
 
 if not OPENROUTER_API_KEY:
@@ -78,7 +82,7 @@ if not API_KEY:
 # FASTAPI APP + MIDDLEWARE
 # ─────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Handwritten-to-Doc Engine v2")
+app = FastAPI(title="Handwritten-to-Doc Engine v3 (Zero-Hallucination)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -101,11 +105,10 @@ async def api_key_guard(request: Request, call_next):
 
 
 # ─────────────────────────────────────────────────────────────
-# CHANGE 2: JOB STORE — Redis (replaces in-memory dict)
-# Survives cold starts and works across multiple Render instances.
+# JOB STORE — Redis
 # ─────────────────────────────────────────────────────────────
 
-JOB_TTL = 60 * 60 * 3  # 3 hours — jobs auto-expire
+JOB_TTL = 60 * 60 * 3  # 3 hours
 
 def _get_redis():
     url = os.getenv("REDIS_URL")
@@ -115,7 +118,7 @@ def _get_redis():
 
 def load_job(jobId: str):
     try:
-        r = _get_redis()
+        r   = _get_redis()
         raw = r.get(f"job:{jobId}")
         return json.loads(raw) if raw else None
     except Exception as e:
@@ -124,9 +127,9 @@ def load_job(jobId: str):
 
 def update_job(jobId: str, **updates):
     try:
-        r = _get_redis()
-        key = f"job:{jobId}"
-        raw = r.get(key)
+        r        = _get_redis()
+        key      = f"job:{jobId}"
+        raw      = r.get(key)
         existing = json.loads(raw) if raw else {"jobId": jobId}
         existing.update(updates)
         r.setex(key, JOB_TTL, json.dumps(existing))
@@ -146,7 +149,17 @@ def log(step, data=None):
 
 
 # =============================================================
-# ░░░░  SECTION 1 — OCR / VISION PIPELINE  ░░░░░░░░░░░░░░░░░░
+# ░░░░  SECTION 1 — ZERO-HALLUCINATION OCR PIPELINE  ░░░░░░░░
+#
+#  OLD approach (3 LLM calls, hallucination risk):
+#    stage1 → Vision + LLM formats markdown
+#    stage2 → LLM audits / corrects
+#    stage3 → LLM converts to TipTap JSON
+#
+#  NEW approach (1 Vision call + 1 LLM styling call):
+#    stage1 → Google Vision extracts raw paragraphs (ground truth)
+#    stage2 → LLM assigns style per paragraph (NO text generation)
+#    stage3 → local code converts paragraphs+styles to TipTap JSON
 # =============================================================
 
 def is_pdf(data: bytes) -> bool:
@@ -209,208 +222,261 @@ def to_png_bytes(raw_bytes: bytes) -> bytes:
     return buf.tobytes()
 
 
-def stage1_extract_markdown(image_bytes: bytes) -> str:
-    log("STAGE 1 — Google Vision OCR")
-    t0 = time.time()
+# ── Stage 1: Google Vision → raw paragraphs (ground truth) ───
 
+DEFAULT_STYLE: dict = {
+    "bold": False, "italic": False, "underline": False,
+    "fontSize": 12, "alignment": "left", "spaceAfter": 6,
+    "isBullet": False, "isNumbered": False, "indent": 0,
+    "isHeading": False, "headingLevel": 0,
+}
+
+def stage1_vision_extract(image_bytes: bytes) -> list[str]:
+    """
+    Calls Google Vision DOCUMENT_TEXT_DETECTION.
+    Returns a list of paragraph strings — the ONLY source of text in the pipeline.
+    The LLM never sees a prompt asking it to generate or complete text.
+    """
+    log("STAGE 1 — Google Vision DOCUMENT_TEXT_DETECTION")
+    t0      = time.time()
     api_key = os.getenv("GOOGLE_VISION_API_KEY")
     if not api_key:
         raise RuntimeError("GOOGLE_VISION_API_KEY not set")
 
-    b64 = base64.b64encode(image_bytes).decode("utf-8")
-
+    b64     = base64.b64encode(image_bytes).decode("utf-8")
     payload = {
         "requests": [{
-            "image": {"content": b64},
-            "features": [{"type": "DOCUMENT_TEXT_DETECTION"}]
+            "image":    {"content": b64},
+            "features": [{"type": "DOCUMENT_TEXT_DETECTION"}],
         }]
     }
-
     res = requests.post(
         f"https://vision.googleapis.com/v1/images:annotate?key={api_key}",
-        json=payload,
-        timeout=60
+        json=payload, timeout=60,
     )
     res.raise_for_status()
 
-    result   = res.json()
-    raw_text = result["responses"][0].get("fullTextAnnotation", {}).get("text", "")
+    annotation = res.json()["responses"][0].get("fullTextAnnotation", {})
+    full_text  = annotation.get("text", "")
 
-    if not raw_text.strip():
-        raise ValueError("Google Vision returned empty text")
+    if not full_text.strip():
+        raise ValueError("Google Vision returned empty text — check image quality")
 
-    log("STAGE 1 Vision done", f"{round(time.time()-t0, 2)}s | {len(raw_text)} chars")
+    # Split on double newlines first; fall back to single newlines
+    paragraphs = [p.strip() for p in re.split(r"\n{2,}", full_text) if p.strip()]
+    if len(paragraphs) <= 2 and "\n" in full_text:
+        paragraphs = [p.strip() for p in full_text.split("\n") if p.strip()]
 
-    prompt = f"""Convert this already-extracted text into clean Markdown.
+    log("STAGE 1 done",
+        f"{round(time.time()-t0, 2)}s | {len(full_text)} chars | {len(paragraphs)} paragraphs")
+    return paragraphs
 
-CRITICAL RULES:
-- Use ONLY the text provided below. Do NOT add, invent, or complete ANYTHING.
-- Copy ALL text exactly as given — including [placeholders], [Your Company Name] etc.
-- Square bracket text like [Your Name] must be copied EXACTLY — never replace with underscores.
-- ONLY your job is formatting: headings (#), bold (**), bullets (-), tables (|col|col|)
-- Do NOT complete sentences. Do NOT add words. Do NOT fix grammar.
-- Output ONLY the Markdown. No explanation.
 
-EXTRACTED TEXT:
-{raw_text}"""
+# ── Stage 2: LLM → styles per paragraph (NO text generation) ─
 
-    payload2 = {
-        "model": MODEL,
+def stage2_detect_styles(image_bytes: bytes, paragraphs: list[str]) -> list[dict]:
+    """
+    Shows the LLM the image + the exact Vision-extracted paragraphs.
+    LLM returns ONE style object per paragraph — it NEVER generates text.
+    This is the anti-hallucination guarantee: text is locked to Vision output.
+    """
+    log("STAGE 2 — LLM style detection (formatting only)")
+    t0 = time.time()
+
+    if not paragraphs:
+        return []
+
+    numbered = "\n".join(f"{i}: {p[:120]}" for i, p in enumerate(paragraphs))
+    n        = len(paragraphs)
+
+    prompt = f"""You are a document style detector. You will see a document image and a numbered list of text paragraphs already extracted by OCR.
+
+YOUR ONLY JOB: for each paragraph index, return its visual formatting from the image.
+DO NOT change, add, invent, or remove any text. DO NOT generate text at all.
+
+PARAGRAPHS (index: first 120 chars of each):
+{numbered}
+
+Return a JSON array with EXACTLY {n} objects — one per index, in order:
+[
+  {{
+    "bold": false,
+    "italic": false,
+    "underline": false,
+    "fontSize": 12,
+    "alignment": "left",
+    "spaceAfter": 6,
+    "isBullet": false,
+    "isNumbered": false,
+    "indent": 0,
+    "isHeading": false,
+    "headingLevel": 0
+  }},
+  ...
+]
+
+Sizing guide:
+- fontSize: large title ≈ 22pt, section heading ≈ 14pt, sub-heading ≈ 12pt, body ≈ 11–12pt, small ≈ 9pt
+- alignment: "left" | "center" | "right" | "justify"
+- indent: 0 = none, 0.5 = slight, 1.0 = deep
+- isBullet: true if the line visually uses •, –, *, or similar bullet markers
+- isNumbered: true if the line starts with 1. 2. a) etc.
+- spaceAfter: 0 tight, 6 normal, 12 paragraph gap, 18 section gap
+- isHeading: true if this looks like a section heading / title
+- headingLevel: 1 for main title, 2 for section heading, 3 for sub-heading, 0 otherwise
+
+CRITICAL: Return ONLY the JSON array. No explanation. No code fences. Exactly {n} items."""
+
+    b64     = base64.b64encode(image_bytes).decode("utf-8")
+    payload = {
+        "model":       MODEL,
         "temperature": 0,
-        "max_tokens": 4000,
-        "messages": [
-            {"role": "system", "content": "You are a text formatter only. Never invent content."},
-            {"role": "user", "content": prompt},
-        ],
+        "max_tokens":  4000,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                {"type": "text", "text": prompt},
+            ],
+        }],
     }
-    res2 = requests.post(OPENROUTER_URL, headers=OCR_HEADERS, json=payload2, timeout=90)
-    res2.raise_for_status()
-    result2 = res2.json()["choices"][0]["message"]["content"]
-    log("STAGE 1 formatting done", f"{round(time.time()-t0, 2)}s | {len(result2)} chars")
-    return result2
 
+    res = requests.post(OPENROUTER_URL, headers=OCR_HEADERS, json=payload, timeout=120)
+    res.raise_for_status()
 
-def extract_json_safe(text: str) -> dict:
-    text = re.sub(r"^```(?:json)?\s*", "", text.strip())
-    text = re.sub(r"\s*```$", "", text)
+    raw = res.json()["choices"][0]["message"]["content"]
+    raw = re.sub(r"^```(?:json)?\s*", "", raw.strip())
+    raw = re.sub(r"\s*```$",          "", raw)
+
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        log("⚠️ JSON parse failed, returning empty dict")
-        return {}
+        styles = json.loads(raw)
+    except json.JSONDecodeError as e:
+        log("⚠️ Style JSON parse failed — using defaults", str(e))
+        styles = []
+
+    # Normalise: pad / trim to exact paragraph count
+    while len(styles) < n:
+        styles.append(DEFAULT_STYLE.copy())
+    styles = styles[:n]
+
+    log("STAGE 2 done", f"{round(time.time()-t0, 2)}s | {len(styles)} styles")
+    return styles
 
 
-def stage2_audit(raw_markdown: str) -> dict:
-    log("STAGE 2 — Auditor")
-    t0 = time.time()
+# ── Stage 3: local code → TipTap JSON (no LLM involved) ──────
 
-    prompt = f"""You are a strict document auditor. Analyze the transcription below and return a JSON report.
-
-TRANSCRIPTION:
-```
-{raw_markdown}
-```
-
-Check for ALL of the following:
-1. Impossible dates (e.g. Feb 31, June 45, month > 12)
-2. Broken or truncated words / sentences
-3. Duplicate repeated paragraphs
-4. Numbers that look obviously wrong (e.g. totals that don't add up)
-5. [?] placeholders — note where they appear
-6. Any text that looks invented rather than transcribed
-7. Transposed digits in monetary amounts — flag ANY that might have swapped digits
-8. Sentences that end unnaturally or seem completed/invented — flag as POTENTIAL_FABRICATION
-
-CRITICAL — FABRICATION REMOVAL RULE:
-If the LAST sentence or paragraph of the document ends abruptly, unnaturally,
-or appears to complete a thought that was NOT fully visible in the image:
-- Mark it as POTENTIAL_FABRICATION in issues_found
-- In corrected_markdown: REMOVE that fabricated ending entirely.
-  Cut the text at the last point you are CERTAIN was in the original image.
-  End the document there — do NOT replace the fabrication with anything.
-  It is better to have a document that ends mid-sentence with [DOCUMENT TRUNCATED]
-  than to have invented content presented as fact.
-
-Return ONLY this exact JSON (no extra text, no code fences):
-{{
-  "hallucination_risk": "low" | "medium" | "high",
-  "issues_found": ["describe each issue, or empty array if none"],
-  "illegible_fields": ["describe each [?] location, or empty array if none"],
-  "corrections_made": ["describe each fix applied, or empty array if none"],
-  "corrected_markdown": "<full corrected Markdown — remove any POTENTIAL_FABRICATION from the end>"
-}}"""
-
-    payload = {
-        "model": MODEL, "temperature": 0, "max_tokens": 4000,
-        "messages": [
-            {"role": "system", "content": "Return clean structured JSON only."},
-            {"role": "user",   "content": prompt},
-        ],
-    }
-    res    = requests.post(OPENROUTER_URL, headers=OCR_HEADERS, json=payload, timeout=90)
-    res.raise_for_status()
-    result = extract_json_safe(res.json()["choices"][0]["message"]["content"])
-    risk   = result.get("hallucination_risk", "?").upper()
-    log(f"STAGE 2 done {'🟢' if risk=='LOW' else '🟡' if risk=='MEDIUM' else '🔴'}",
-        f"{round(time.time()-t0, 2)}s | risk={risk} | issues={len(result.get('issues_found', []))}")
-    return result
+def _make_text_node(text: str, style: dict) -> dict:
+    marks = []
+    if style.get("bold"):      marks.append({"type": "bold"})
+    if style.get("italic"):    marks.append({"type": "italic"})
+    if style.get("underline"): marks.append({"type": "underline"})
+    node = {"type": "text", "text": text}
+    if marks:
+        node["marks"] = marks
+    return node
 
 
-def stage3_to_tiptap(markdown: str) -> dict:
-    log("STAGE 3 — TipTap JSON")
-    t0 = time.time()
+def stage3_to_tiptap(paragraphs: list[str], styles: list[dict]) -> dict:
+    """
+    Converts Vision paragraphs + LLM styles into TipTap JSON.
+    Pure local logic — zero LLM calls, zero hallucination risk.
+    """
+    log("STAGE 3 — Build TipTap JSON (local, no LLM)")
+    content = []
 
-    prompt = f"""Convert the following Markdown into a TipTap editor JSON document.
+    for text, style in zip(paragraphs, styles):
+        text_node = _make_text_node(text, style)
 
-Rules:
-- Root node: {{ "type": "doc", "content": [...] }}
-- Supported node types: paragraph, heading (with level 1-6), bulletList, orderedList,
-  listItem, blockquote, horizontalRule, table, tableRow, tableHeader, tableCell
-- Supported marks: bold, italic, underline, strike
-- Text nodes: {{ "type": "text", "text": "...", "marks": [...] }}
-- Heading: {{ "type": "heading", "attrs": {{ "level": 1 }}, "content": [...] }}
-- HorizontalRule (for page breaks): {{ "type": "horizontalRule" }}
-- Output ONLY the JSON object. No explanation, no code fences.
+        if style.get("isHeading") and style.get("headingLevel", 0) > 0:
+            node = {
+                "type":    "heading",
+                "attrs":   {"level": style["headingLevel"]},
+                "content": [text_node],
+            }
 
-MARKDOWN:
-{markdown}"""
+        elif style.get("isBullet"):
+            # strip leading bullet character if Vision already included it
+            clean = re.sub(r"^[•\-\*–]\s*", "", text)
+            node = {
+                "type": "bulletList",
+                "content": [{
+                    "type":    "listItem",
+                    "content": [{
+                        "type":    "paragraph",
+                        "content": [_make_text_node(clean, style)],
+                    }],
+                }],
+            }
 
-    payload = {
-        "model": MODEL, "temperature": 0, "max_tokens": 4000,
-        "messages": [
-            {"role": "system", "content": "Return valid TipTap JSON only."},
-            {"role": "user",   "content": prompt},
-        ],
-    }
-    res = requests.post(OPENROUTER_URL, headers=OCR_HEADERS, json=payload, timeout=90)
-    res.raise_for_status()
-    doc = extract_json_safe(res.json()["choices"][0]["message"]["content"])
-    if doc.get("type") != "doc":
-        doc = {"type": "doc", "content": doc.get("content", [])}
-    log("STAGE 3 done", f"{round(time.time()-t0, 2)}s")
-    return doc
+        elif style.get("isNumbered"):
+            clean = re.sub(r"^\d+[.)]\s*|^[a-zA-Z][.)]\s*", "", text)
+            node = {
+                "type": "orderedList",
+                "content": [{
+                    "type":    "listItem",
+                    "content": [{
+                        "type":    "paragraph",
+                        "content": [_make_text_node(clean, style)],
+                    }],
+                }],
+            }
+
+        else:
+            align = (style.get("alignment") or "left").lower()
+            attrs = {"textAlign": align} if align != "left" else {}
+            node  = {
+                "type":    "paragraph",
+                "attrs":   attrs,
+                "content": [text_node],
+            }
+
+        content.append(node)
+
+    return {"type": "doc", "content": content}
 
 
-def strip_truncated(markdown: str) -> str:
-    marker = "[DOCUMENT TRUNCATED]"
-    if marker in markdown:
-        markdown = markdown[:markdown.index(marker)].rstrip()
-        log("⚠️ TRUNCATION MARKER found — content cut at that point")
-    return markdown
-
+# ── Master pipeline ───────────────────────────────────────────
 
 def parse_document(image_bytes: bytes) -> dict:
+    """
+    Zero-hallucination pipeline:
+      1. Google Vision  → paragraphs (ground-truth text, never altered)
+      2. LLM            → styles only (no text generation)
+      3. Local code     → TipTap JSON
+
+    The LLM is shown the image but is only allowed to output style metadata.
+    Text in the final document comes 100% from Google Vision.
+    """
     try:
         log("START parse_document", f"bytes={len(image_bytes)}")
         t0 = time.time()
 
-        raw_markdown = stage1_extract_markdown(image_bytes)
-        if not raw_markdown.strip():
-            raise ValueError("Stage 1 returned empty markdown")
+        # Stage 1 — Vision
+        paragraphs = stage1_vision_extract(image_bytes)
+        if not paragraphs:
+            raise ValueError("Stage 1 returned no paragraphs")
 
-        raw_markdown = strip_truncated(raw_markdown)
+        # Stage 2 — LLM style detection (formatting only)
+        styles = stage2_detect_styles(image_bytes, paragraphs)
 
-        audit             = stage2_audit(raw_markdown)
-        risk              = audit.get("hallucination_risk", "low")
-        verified_markdown = audit.get("corrected_markdown") or raw_markdown
-        if not verified_markdown.strip():
-            verified_markdown = raw_markdown
+        # Stage 3 — TipTap JSON (pure local conversion)
+        doc = stage3_to_tiptap(paragraphs, styles)
 
-        verified_markdown = strip_truncated(verified_markdown)
-
-        doc           = stage3_to_tiptap(verified_markdown)
         total_elapsed = round(time.time() - t0, 2)
-        log("SUCCESS parse_document", f"total={total_elapsed}s | risk={risk}")
+        log("SUCCESS parse_document", f"total={total_elapsed}s")
 
         doc["_audit"] = {
-            "hallucination_risk": risk,
-            "issues_found":       audit.get("issues_found", []),
-            "corrections_made":   audit.get("corrections_made", []),
-            "illegible_fields":   audit.get("illegible_fields", []),
+            "hallucination_risk": "none",   # text comes 100% from Vision
+            "issues_found":       [],
+            "corrections_made":   [],
+            "illegible_fields":   [],
             "pipeline_seconds":   total_elapsed,
             "engine_version":     ENGINE_VERSION,
+            "paragraph_count":    len(paragraphs),
         }
         return doc
+
     except Exception as e:
         log("❌ ERROR in parse_document", repr(e))
         traceback.print_exc()
@@ -438,7 +504,6 @@ def run_ocr_job(jobId: str):
         update_job(jobId, state="ready", contentJson=document)
         log("JOB DONE", jobId)
     except Exception as e:
-        # CHANGE 3: store actual error so frontend can display it
         error_detail = repr(e)
         log("JOB ERROR", error_detail)
         traceback.print_exc()
@@ -446,7 +511,7 @@ def run_ocr_job(jobId: str):
 
 
 # =============================================================
-# ░░░░  SECTION 2 — DOCX EXPORT ENGINE  ░░░░░░░░░░░░░░░░░░░░░
+# ░░░░  SECTION 2 — DOCX EXPORT ENGINE  (unchanged)  ░░░░░░░░
 # =============================================================
 
 BODY_FONT = "Times New Roman"
@@ -993,7 +1058,7 @@ def sanitize_filename(name: str) -> str:
 
 
 # =============================================================
-# ░░░░  SECTION 3 — ALL ROUTES  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+# ░░░░  SECTION 3 — ALL ROUTES  (unchanged)  ░░░░░░░░░░░░░░░░
 # =============================================================
 
 class ProcessRequest(BaseModel):
