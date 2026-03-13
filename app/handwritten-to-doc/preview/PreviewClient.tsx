@@ -222,8 +222,8 @@ export default function PreviewPage() {
                 {!isPaid && job.contentJson && (
                   <BeforeAfterSlider
                     contentJson={job.contentJson}
-                    // Pass originalImageUrl if your JobData carries it:
-                    // originalImageUrl={job.originalImageUrl}
+                    jobId={job.jobId}          // ← add this; the component derives /api/job-image?jobId=xxx
+                    height={560}               // ← slightly taller for better document preview
                   />
                 )}
 

@@ -65,6 +65,7 @@
     "docxtemplater": "^3.67.6",
     "embla-carousel-react": "8.5.1",
     "formidable": "^3.5.4",
+    "framer-motion": "^12.36.0",
     "html-docx-js": "^0.3.1",
     "html-to-docx": "^1.8.0",
     "input-otp": "1.4.1",

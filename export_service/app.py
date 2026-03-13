@@ -27,7 +27,7 @@ import time
 import numpy as np
 import cv2
 import redis as redis_lib
-
+import mimetypes
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -1271,6 +1271,36 @@ async def parse_document_route(
         log("❌ ROUTE ERROR", repr(e)); traceback.print_exc()
         raise HTTPException(status_code=500, detail="PROCESSING_FAILED")
 
+
+
+@app.get("/api/job-file")
+async def serve_job_file(path: str):
+    """
+    Serves the raw uploaded file (image or PDF) for the preview slider.
+    Only accessible with a valid x-api-key (enforced by the middleware above).
+    The path must be inside the uploads/ directory — anything else is rejected.
+    """
+    import os
+ 
+    # Safety: only allow paths inside the uploads folder
+    uploads_dir = os.path.abspath("uploads")
+    abs_path    = os.path.abspath(path)
+ 
+    if not abs_path.startswith(uploads_dir):
+        raise HTTPException(status_code=403, detail="FORBIDDEN")
+ 
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="FILE_NOT_FOUND")
+ 
+    mime, _ = mimetypes.guess_type(abs_path)
+    mime    = mime or "application/octet-stream"
+ 
+    with open(abs_path, "rb") as f:
+        data = f.read()
+ 
+    return Response(content=data, media_type=mime)
+
+    
 
 class GenerateDocxRequest(BaseModel):
     contentJson:  Any           = None

@@ -1,232 +1,188 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { generateHTML } from "@tiptap/html";
 import StarterKit from "@tiptap/starter-kit";
-import TextAlign from "@tiptap/extension-text-align";
-import { TextStyle } from "@tiptap/extension-text-style";
-import { Mark } from "@tiptap/core";
+import { TextAlign } from "@tiptap/extension-text-align";
+import { Underline } from "@tiptap/extension-underline";
 
-// ─── Inline mark extensions (mirrors JsonEditor) ─────────────────────────────
-const UnderlineMark = Mark.create({
-  name: "underline",
-  parseHTML() { return [{ tag: "u" }, { style: "text-decoration" }]; },
-  renderHTML() { return ["u", 0]; },
-});
-
-const FontSizeMark = Mark.create({
-  name: "fontSize",
-  addAttributes() {
-    return {
-      size: {
-        default: null,
-        parseHTML: (el: HTMLElement) => el.style.fontSize || null,
-        renderHTML: (attrs: { size?: string | null }) =>
-          attrs.size ? { style: `font-size: ${attrs.size}` } : {},
-      },
-    };
-  },
-  parseHTML() { return [{ style: "font-size" }]; },
-  renderHTML({ HTMLAttributes }) { return ["span", HTMLAttributes, 0]; },
-});
-
-// ─── Types ──────────────────────────────────────────────────────────────────
-interface BeforeAfterSliderProps {
-  /** TipTap JSON doc – the "After" (clean text) side */
+// ─────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────
+interface Props {
   contentJson: any;
-  /** Optional URL of the original scan – shown on the "Before" side */
-  originalImageUrl?: string;
+  originalImageUrl?: string; // served by /api/job-image?jobId=xxx
+  jobId?: string;            // fallback if originalImageUrl not passed
+  height?: number;           // container height in px (default 520)
 }
 
-// ─── Helper — now uses same extensions as JsonEditor ─────────────────────────
-function tiptapToHtml(doc: any): string {
+// ─────────────────────────────────────────────────────────
+// Helper – render TipTap JSON → HTML string
+// ─────────────────────────────────────────────────────────
+function renderHtml(doc: any): string {
   try {
     return generateHTML(doc, [
       StarterKit,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
-      TextStyle,
-      UnderlineMark,
-      FontSizeMark,
+      Underline,
     ]);
   } catch {
-    return "<p>Unable to render preview.</p>";
+    return "<p>Preview unavailable</p>";
   }
 }
 
-// ─── Simulated scan overlay (used when no real image is supplied) ─────────────
-function FakeScannedDoc({ html }: { html: string }) {
-  return (
-    <div
-      className="relative w-full h-full overflow-auto bg-amber-50/60"
-      style={{ fontFamily: "'Patrick Hand', cursive, serif" }}
-    >
-      {/* noise / scan texture */}
-      <div
-        className="pointer-events-none absolute inset-0 z-10 opacity-30"
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")",
-          backgroundSize: "200px 200px",
-          mixBlendMode: "multiply",
-        }}
-      />
-      {/* ruled-line effect */}
-      <div
-        className="pointer-events-none absolute inset-0 z-10 opacity-10"
-        style={{
-          backgroundImage: "repeating-linear-gradient(transparent, transparent 31px, #6b9bd2 31px, #6b9bd2 32px)",
-          backgroundSize: "100% 32px",
-        }}
-      />
-      {/* skewed, slightly blurry "handwritten" text */}
-      <div
-        className="relative z-20 p-8 text-slate-700 text-sm leading-8"
-        style={{
-          filter: "blur(0.4px)",
-          transform: "rotate(-0.3deg)",
-          color: "#2d3a5a",
-          opacity: 0.82,
-        }}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-      {/* "ORIGINAL SCAN" badge */}
-      <div className="absolute top-4 right-4 z-30 bg-amber-400/80 text-amber-900 text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded">
-        Original scan
-      </div>
-    </div>
-  );
-}
-
-// ─── Clean "After" panel ──────────────────────────────────────────────────────
-function CleanDoc({ html }: { html: string }) {
-  return (
-    <div className="relative w-full h-full overflow-auto bg-white">
-      <div
-        className="p-8 text-slate-800 text-sm leading-7 prose prose-sm max-w-none"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-      {/* "CONVERTED" badge */}
-      <div className="absolute top-4 right-4 z-30 bg-emerald-500/90 text-white text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded">
-        Converted
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-export function BeforeAfterSlider({ contentJson, originalImageUrl }: BeforeAfterSliderProps) {
-  const html = tiptapToHtml(contentJson);
+// ─────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────
+export function BeforeAfterSlider({
+  contentJson,
+  originalImageUrl,
+  jobId,
+  height = 520,
+}: Props) {
+  const [position, setPosition] = useState(50); // 0–100 %
+  const [dragging, setDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [split, setSplit] = useState(50); // percent
-  const dragging = useRef(false);
+  const htmlContent  = contentJson ? renderHtml(contentJson) : "";
 
-  const onMove = useCallback((clientX: number) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const pct = Math.min(95, Math.max(5, ((clientX - rect.left) / rect.width) * 100));
-    setSplit(pct);
+  // Derive image URL: prop > /api/job-image?jobId=xxx > null
+  const imgSrc =
+    originalImageUrl ||
+    (jobId ? `/api/job-image?jobId=${jobId}` : null);
+
+  // ── Drag logic ────────────────────────────────────────
+  const updatePosition = useCallback((clientX: number) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const { left, width } = el.getBoundingClientRect();
+    const pct = Math.min(100, Math.max(0, ((clientX - left) / width) * 100));
+    setPosition(pct);
   }, []);
 
-  const onMouseDown = () => { dragging.current = true; };
-  const onMouseMove = (e: MouseEvent) => { if (dragging.current) onMove(e.clientX); };
-  const onMouseUp   = () => { dragging.current = false; };
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setDragging(true);
+  }, []);
 
-  const onTouchMove  = (e: TouchEvent) => { onMove(e.touches[0].clientX); };
+  const onTouchStart = useCallback(() => setDragging(true), []);
 
   useEffect(() => {
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup",   onMouseUp);
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    window.addEventListener("touchend",  onMouseUp);
+    if (!dragging) return;
+    const onMove  = (e: MouseEvent) => updatePosition(e.clientX);
+    const onTouch = (e: TouchEvent) => updatePosition(e.touches[0].clientX);
+    const onUp    = () => setDragging(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+    window.addEventListener("touchmove", onTouch);
+    window.addEventListener("touchend",  onUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup",   onMouseUp);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend",  onMouseUp);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup",   onUp);
+      window.removeEventListener("touchmove", onTouch);
+      window.removeEventListener("touchend",  onUp);
     };
-  }, [onMouseMove, onTouchMove]);
+  }, [dragging, updatePosition]);
 
   return (
-    <div className="space-y-2">
-      {/* Label row */}
-      <div className="flex justify-between text-[11px] font-semibold tracking-wide uppercase text-slate-400 px-1 select-none">
-        <span>Before</span>
-        <span>After</span>
+    <div className="w-full rounded-lg border border-slate-200 overflow-hidden shadow-sm bg-white">
+
+      {/* ── Labels ─────────────────────────────────────── */}
+      <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold tracking-wide text-slate-500 uppercase select-none">
+        <span>Before — Original Scan</span>
+        <span>After — Converted Document</span>
       </div>
 
-      {/* Slider container */}
+      {/* ── Slider container ───────────────────────────── */}
       <div
         ref={containerRef}
-        className="relative w-full rounded-xl overflow-hidden border border-slate-200 shadow-sm select-none"
-        style={{ height: "520px" }}
+        className="relative w-full select-none overflow-hidden"
+        style={{ height }}
+        onMouseDown={(e) => {
+          // allow dragging from anywhere in the container
+          updatePosition(e.clientX);
+          setDragging(true);
+        }}
       >
-        {/* BEFORE (left) — full width, clipped on right */}
-        <div className="absolute inset-0 overflow-hidden">
-          {originalImageUrl ? (
+
+        {/* ══ RIGHT PANEL — converted document (full width, underneath) ══ */}
+        <div
+          className="absolute inset-0 overflow-y-auto bg-white"
+          style={{ cursor: dragging ? "col-resize" : "default" }}
+        >
+          <div
+            className="px-8 py-6 text-sm leading-relaxed text-slate-800 pointer-events-none"
+            style={{ fontFamily: "'Times New Roman', serif", fontSize: 13 }}
+            dangerouslySetInnerHTML={{ __html: htmlContent }}
+          />
+        </div>
+
+        {/* ══ LEFT PANEL — original image (clipped to slider position) ══ */}
+        <div
+          className="absolute inset-0 overflow-hidden pointer-events-none"
+          style={{ width: `${position}%` }}
+        >
+          {imgSrc ? (
             <img
-              src={originalImageUrl}
-              alt="Original scan"
-              className="w-full h-full object-cover object-top"
-              style={{ filter: "sepia(20%) contrast(90%)" }}
+              src={imgSrc}
+              alt="Original scanned document"
+              className="absolute top-0 left-0 h-full object-cover object-left"
+              style={{ width: containerRef.current?.offsetWidth ?? "100%" }}
+              draggable={false}
             />
           ) : (
-            <FakeScannedDoc html={html} />
+            /* Fallback: grey "scan" placeholder */
+            <div className="h-full w-full bg-slate-100 flex items-center justify-center">
+              <p className="text-xs text-slate-400 rotate-[-30deg] text-center leading-loose">
+                Original scan<br />not available
+              </p>
+            </div>
           )}
-        </div>
 
-        {/* AFTER (right) — clipped to the right portion */}
-        <div
-          className="absolute inset-0 overflow-hidden"
-          style={{ clipPath: `inset(0 0 0 ${split}%)` }}
-        >
-          <CleanDoc html={html} />
-        </div>
-
-        {/* Divider line */}
-        <div
-          className="absolute top-0 bottom-0 z-30 flex items-center justify-center"
-          style={{ left: `calc(${split}% - 1px)`, width: "2px", background: "white" }}
-        />
-
-        {/* Drag handle */}
-        <div
-          className="absolute top-1/2 z-40 flex items-center justify-center -translate-y-1/2 cursor-ew-resize"
-          style={{
-            left: `calc(${split}% - 18px)`,
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "white",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.18)",
-            border: "2px solid #e2e8f0",
-          }}
-          onMouseDown={onMouseDown}
-          onTouchStart={onMouseDown}
-        >
-          {/* ← → icon */}
-          <svg width="16" height="10" viewBox="0 0 16 10" fill="none">
-            <path d="M1 5h14M5 1L1 5l4 4M11 1l4 4-4 4" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-
-        {/* PREVIEW watermark overlay (before-side only) */}
-        <div
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
-          style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}
-        >
-          <span
-            className="text-4xl font-black tracking-[0.25em] text-slate-400/20 uppercase"
-            style={{ transform: "rotate(-25deg)" }}
-          >
-            PREVIEW
+          {/* BEFORE badge */}
+          <span className="absolute top-3 left-3 bg-slate-800/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm">
+            ORIGINAL SCAN
           </span>
         </div>
+
+        {/* ══ DIVIDER HANDLE ══ */}
+        <div
+          className="absolute top-0 bottom-0 z-20 flex items-center justify-center"
+          style={{
+            left:      `${position}%`,
+            transform: "translateX(-50%)",
+            width:     28,
+            cursor:    "col-resize",
+          }}
+          onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e); }}
+          onTouchStart={(e) => { e.stopPropagation(); onTouchStart(); }}
+        >
+          {/* thin line */}
+          <div className="absolute inset-y-0 left-1/2 w-0.5 bg-blue-500/80 -translate-x-1/2" />
+
+          {/* pill */}
+          <div className="relative z-10 flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 shadow-lg border-2 border-white">
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-white fill-current">
+              <path d="M5 3l-3 5 3 5V3zm6 0v10l3-5-3-5z" />
+            </svg>
+          </div>
+        </div>
+
+        {/* ══ AFTER badge (always visible on right side) ══ */}
+        <div
+          className="absolute top-3 z-10 pointer-events-none"
+          style={{ left: `calc(${position}% + 18px)` }}
+        >
+          <span className="bg-emerald-600/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm whitespace-nowrap">
+            CONVERTED
+          </span>
+        </div>
+
       </div>
 
-      {/* Drag hint */}
-      <p className="text-center text-[11px] text-slate-400 select-none">
+      {/* ── Hint ───────────────────────────────────────── */}
+      <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 text-center text-[11px] text-slate-400 select-none">
         ← Drag to compare →
-      </p>
+      </div>
     </div>
   );
 }

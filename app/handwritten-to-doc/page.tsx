@@ -1,8 +1,11 @@
+"use client"
+
 import Link from "next/link"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
+import { motion } from "framer-motion"
 import {
   ArrowRight,
   FileText,
@@ -27,37 +30,32 @@ export default function HandwrittenToDocPage() {
         <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-12 pb-12 md:pt-14 md:pb-16">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div className="flex flex-col gap-6">
-              {/* <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary text-secondary-foreground text-sm font-medium w-fit">
-                <Sparkles className="h-3.5 w-3.5" />
-                Powered by AI Vision & OCR
-              </div> */}
-
               <h1 className="text-3xl md:text-4xl lg:text-6xl font-semibold tracking-tight text-balance leading-tight">
-                "Stop Retyping. Turn Messy Legal & Professional Scans into Perfect Word Docs in Seconds.
+                Turn Handwritten & Scanned Documents into Perfect Word Files in Seconds.
               </h1>
 
               <p className="text-base md:text-lg text-muted-foreground leading-snug max-w-lg">
-               Keep the "fully editable and ready for official use" line—that’s a high-trust signal.
+                AI-powered OCR that converts messy handwritten or scanned documents into fully editable Word files while preserving original formatting.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 pt-1">
                 <Button
-                    size="lg"
-                    asChild
-                    className="
-                      text-base font-medium
-                      px-7 py-5
-                      h-auto
-                      shadow-sm
-                      hover:shadow-md
-                      transition-all
-                    "
-                  >
-                    <Link href="/handwritten-to-doc/upload">
-                      Upload your document
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
+                  size="lg"
+                  asChild
+                  className="
+                    text-base font-medium
+                    px-7 py-5
+                    h-auto
+                    shadow-sm
+                    hover:shadow-md
+                    transition-all
+                  "
+                >
+                  <Link href="/handwritten-to-doc/upload">
+                    Upload your document
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
                 <Button
                   size="lg"
                   variant="outline"
@@ -68,78 +66,82 @@ export default function HandwrittenToDocPage() {
                 </Button>
               </div>
 
-              <p className="text-sm text-muted-foreground">No signup required • Files deleted automatically • Handles messy handwriting</p>
+              <p className="text-sm text-muted-foreground">
+                No signup required • Files deleted automatically • Handles messy handwriting
+              </p>
             </div>
 
-           <div className="relative">
-              <div className="relative grid grid-cols-2 gap-10 items-center">
+            {/* ── ANIMATED HERO VISUAL ── */}
+            <div className="relative flex items-center justify-center lg:justify-end min-h-[450px]">
+              <div className="relative w-full max-w-[500px]">
 
-                  {/* BEFORE */}
-                  <div className="relative rounded-2xl border border-primary/30 bg-white p-4 shadow-md">
-                    <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Handwritten or scanned document
+                {/* 1. BEFORE card — slides left */}
+                <motion.div
+                  initial={{ x: 0, opacity: 1 }}
+                  animate={{ x: -100 }}
+                  transition={{ delay: 0.5, duration: 0.8, ease: "easeInOut" }}
+                  className="relative z-10 w-[240px] rounded-2xl border border-primary/30 bg-white p-4 shadow-md"
+                >
+                  <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Handwritten Scan
+                  </div>
+                  <div className="relative aspect-[3/4] rounded-xl bg-white overflow-hidden border">
+                    <Image
+                      src="/images/legal-doc1.png"
+                      alt="Scanned document"
+                      fill
+                      priority
+                      className="object-contain opacity-60 grayscale"
+                    />
+                  </div>
+                </motion.div>
+
+                {/* 2. AFTER card — pops out with spring */}
+                <motion.div
+                  initial={{ x: 0, opacity: 0, scale: 0.8 }}
+                  animate={{ x: 140, opacity: 1, scale: 1 }}
+                  transition={{
+                    delay: 1.2,
+                    duration: 0.8,
+                    type: "spring",
+                    stiffness: 100,
+                  }}
+                  className="absolute top-4 left-0 z-20 w-[260px] rounded-2xl bg-white p-5 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-primary/20"
+                >
+                  <div className="mb-3 text-[10px] font-medium uppercase tracking-wider text-primary/80">
+                    Clean Word Document
+                  </div>
+                  <div className="relative aspect-[3/4] rounded-xl bg-white overflow-hidden shadow-inner border border-slate-100">
+                    <div className="absolute top-0 left-0 right-0 h-8 bg-blue-50/50 border-b flex items-center px-3 text-[9px] text-blue-600 font-medium">
+                      Microsoft Word • .docx
                     </div>
-
-                    <div className="relative aspect-[3/4] rounded-xl bg-white overflow-hidden border">
-                      <Image
-                        src="/images/legal-doc1.png"
-                        alt="Scanned document"
-                        fill
-                        priority
-                        className="object-contain "
-                      />
+                    <Image
+                      src="/images/legal-doc1.png"
+                      alt="Editable Word document"
+                      fill
+                      priority
+                      className="object-contain pt-8"
+                    />
+                    <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-blue-600 text-white text-[8px] font-bold">
+                      RESULT
                     </div>
                   </div>
+                  <p className="mt-4 text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                    <FileCheck className="h-3 w-3" /> Ready for official use
+                  </p>
+                </motion.div>
 
-                  {/* ARROW (FLOW CUE) */}
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-muted-foreground/40 text-3xl select-none">
-                    →
-                  </div>
-
-                  {/* AFTER */}
-                  <div className="relative rounded-2xl bg-white p-5 shadow-[0_12px_40px_rgba(0,0,0,0.08)] border border-primary/10">
-
-                    {/* Label (quiet, confident) */}
-                    <div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-primary/80">
-                      Clean, editable Word document
-                    </div>
-
-                    {/* Document shell */}
-                    <div className="relative aspect-[3/4] rounded-xl bg-white overflow-hidden shadow-inner">
-
-                      {/* Word chrome */}
-                      <div className="absolute top-0 left-0 right-0 h-9 bg-muted/30 border-b flex items-center px-3 text-[10px] text-muted-foreground">
-                        Microsoft Word • .docx
-                      </div>
-
-                      {/* Document preview */}
-                      <Image
-                        src="/images/legal-doc1.png"
-                        alt="Editable Word document"
-                        fill
-                        priority
-                        className="object-contain pt-9"
-                      />
-
-                      {/* Result indicator (replaces AFTER pill) */}
-                      <div className="absolute top-3 right-3 px-2 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-semibold tracking-wide">
-                        RESULT
-                      </div>
-                    </div>
-
-                    {/* Trust micro-copy */}
-                    <p className="mt-4 text-xs text-muted-foreground">
-                      Fully editable · Formatting preserved · Ready for official use
-                    </p>
-
-                    {/* Ultra-subtle edge highlight */}
-                    <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-primary/10" />
-                  </div>
-
-
-                </div>
-
+                {/* 3. Connecting line — fades in last */}
+                <motion.div
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: 80, opacity: 1 }}
+                  transition={{ delay: 1.8, duration: 0.5 }}
+                  className="absolute top-1/2 left-[200px] h-[2px] bg-gradient-to-r from-primary/50 to-transparent hidden md:block"
+                />
+              </div>
             </div>
+            {/* ── END ANIMATED HERO VISUAL ── */}
+
           </div>
         </section>
 
@@ -147,6 +149,7 @@ export default function HandwrittenToDocPage() {
           <div className="h-px w-24 bg-border/60" />
         </div>
 
+        {/* Before / After showcase */}
         <section className="pt-14 md:pt-20 pb-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
@@ -187,11 +190,7 @@ export default function HandwrittenToDocPage() {
                 </span>
                 <div className="aspect-[4/3] bg-card border-b border-border p-8">
                   <div className="space-y-6 text-left bg-white rounded-md border border-border/60 p-6 h-full">
-
-                    <div className="font-bold text-base text-foreground">
-                      Job Application
-                    </div>
-
+                    <div className="font-bold text-base text-foreground">Job Application</div>
                     <div className="text-sm space-y-2">
                       <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-muted-foreground">
                         <p>
@@ -203,21 +202,16 @@ export default function HandwrittenToDocPage() {
                           (555) 123-4567
                         </p>
                         <p className="col-span-2">
-                          <span className="font-medium text-foreground">
-                            Position Applied For:
-                          </span>{" "}
+                          <span className="font-medium text-foreground">Position Applied For:</span>{" "}
                           Office Assistant
                         </p>
                       </div>
                     </div>
-
                     <div className="h-px bg-border" />
-
                     <div className="text-sm space-y-2">
                       <p className="font-medium text-foreground uppercase tracking-wide">
                         Employment History
                       </p>
-
                       <div className="border border-border rounded-md overflow-hidden">
                         <table className="w-full text-xs">
                           <thead className="bg-muted/30 text-muted-foreground">
@@ -237,14 +231,11 @@ export default function HandwrittenToDocPage() {
                         </table>
                       </div>
                     </div>
-
                     <p className="text-xs text-muted-foreground pt-2">
                       Converted from handwritten form • Fully editable in Word or Google Docs
                     </p>
-
                   </div>
                 </div>
-
                 <div className="p-6 bg-primary/5">
                   <p className="text-xs text-muted-foreground text-center">
                     Fully editable. Formatting preserved.
@@ -256,95 +247,79 @@ export default function HandwrittenToDocPage() {
           </div>
         </section>
 
-
-     <section
-        id="how-it-works"
-        className="bg-muted/20 py-24 md:py-32 border-y border-border"
-      >
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
-          {/* Header */}
-          <div className="text-center space-y-4 mb-20">
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight">
-              How it works
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              A simple, reliable process for converting handwritten documents into
-              clean, editable Word files
-            </p>
-          </div>
-
-          {/* Steps */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
-            {[
-              {
-                step: "01",
-                icon: Upload,
-                title: "Upload your document",
-                description: "JPG, PNG, or PDF files supported",
-              },
-              {
-                step: "02",
-                icon: Brain,
-                title: "Text is extracted accurately",
-                description: "Printed and handwritten text recognized",
-              },
-              {
-                step: "03",
-                icon: Sparkles,
-                title: "Content is structured",
-                description: "Layout, tables, and form fields preserved",
-              },
-              {
-                step: "04",
-                icon: Download,
-                title: "Download an editable Word file",
-                description: "Works with Microsoft Word and Google Docs",
-              },
-            ].map((item) => (
-              <div
-                key={item.step}
-                className="
-                  rounded-xl
-                  border border-border
-                  bg-white
-                  p-8
-                  space-y-5
-                  shadow-sm
-                  hover:shadow-md
-                  transition-shadow
-                "
-              >
-                {/* Step label */}
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Step {item.step}
-                </span>
-
-                {/* Icon */}
-               <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <item.icon className="h-5 w-5" />
-                </div>
-
-                {/* Content */}
-                <h3 className="text-base font-semibold text-foreground">
-                  {item.title}
-                </h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {item.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-
-
-
-       <section className="bg-muted/20 py-20 md:py-28">
+        {/* How it works */}
+        <section
+          id="how-it-works"
+          className="bg-muted/20 py-24 md:py-32 border-y border-border"
+        >
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center space-y-4 mb-20">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight">
+                How it works
+              </h2>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                A simple, reliable process for converting handwritten documents into
+                clean, editable Word files
+              </p>
+            </div>
 
-            {/* Header */}
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
+              {[
+                {
+                  step: "01",
+                  icon: Upload,
+                  title: "Upload your document",
+                  description: "JPG, PNG, or PDF files supported",
+                },
+                {
+                  step: "02",
+                  icon: Brain,
+                  title: "Text is extracted accurately",
+                  description: "Printed and handwritten text recognized",
+                },
+                {
+                  step: "03",
+                  icon: Sparkles,
+                  title: "Content is structured",
+                  description: "Layout, tables, and form fields preserved",
+                },
+                {
+                  step: "04",
+                  icon: Download,
+                  title: "Download an editable Word file",
+                  description: "Works with Microsoft Word and Google Docs",
+                },
+              ].map((item) => (
+                <div
+                  key={item.step}
+                  className="
+                    rounded-xl
+                    border border-border
+                    bg-white
+                    p-8
+                    space-y-5
+                    shadow-sm
+                    hover:shadow-md
+                    transition-shadow
+                  "
+                >
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Step {item.step}
+                  </span>
+                  <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <item.icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-base font-semibold text-foreground">{item.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Who uses this */}
+        <section className="bg-muted/20 py-20 md:py-28">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="text-center space-y-3 mb-16">
               <h2 className="text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight">
                 Who uses this?
@@ -354,7 +329,6 @@ export default function HandwrittenToDocPage() {
               </p>
             </div>
 
-            {/* Cards */}
             <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
               {[
                 {
@@ -380,29 +354,20 @@ export default function HandwrittenToDocPage() {
                   key={useCase.title}
                   className="rounded-lg border border-border/60 bg-white p-7 space-y-4 transition-shadow hover:shadow-md"
                 >
-                  {/* Icon */}
                   <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <useCase.icon className="h-5 w-5" />
                   </div>
-
-                  {/* Content */}
-                  <h3 className="text-base font-semibold text-foreground">
-                    {useCase.title}
-                  </h3>
-
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {useCase.description}
-                  </p>
+                  <h3 className="text-base font-semibold text-foreground">{useCase.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{useCase.description}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-
+        {/* CTA */}
         <section className="bg-muted/30 py-24 md:py-32">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
             <div className="max-w-3xl mx-auto">
               <div
                 className="
@@ -415,12 +380,9 @@ export default function HandwrittenToDocPage() {
                   shadow-[0_10px_30px_rgba(0,0,0,0.06)]
                 "
               >
-                {/* Heading */}
                 <h2 className="text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight">
                   Start converting your documents
                 </h2>
-
-                {/* CTA */}
                 <Button
                   size="lg"
                   asChild
@@ -436,18 +398,13 @@ export default function HandwrittenToDocPage() {
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button>
-
-                {/* Trust line */}
                 <p className="text-xs text-muted-foreground">
                   No signup • Files deleted automatically • Secure processing
                 </p>
               </div>
             </div>
-
           </div>
         </section>
-
-
 
       </main>
       <Footer />
