@@ -438,49 +438,153 @@ def stage3_to_tiptap(paragraphs: list[str], styles: list[dict]) -> dict:
 
 # ── Master pipeline ───────────────────────────────────────────
 
+
+
+def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], list[dict]]:
+    """
+    Returns paragraphs AND deterministic styles — derived purely from 
+    Vision's bounding box geometry. Zero LLM involvement in styling.
+    """
+    api_key = os.getenv("GOOGLE_VISION_API_KEY")
+    b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    res = requests.post(
+        f"https://vision.googleapis.com/v1/images:annotate?key={api_key}",
+        json={"requests": [{
+            "image":    {"content": b64},
+            "features": [{"type": "DOCUMENT_TEXT_DETECTION"}],
+        }]},
+        timeout=60,
+    )
+    res.raise_for_status()
+
+    annotation = res.json()["responses"][0].get("fullTextAnnotation", {})
+    pages      = annotation.get("pages", [])
+
+    if not pages:
+        raise ValueError("Vision returned no page data")
+
+    page       = pages[0]
+    page_width = page.get("width", 1)
+    blocks     = page.get("blocks", [])
+
+    paragraphs = []
+    styles     = []
+
+    # Collect ALL block heights to determine relative font sizes
+    all_heights = []
+    for block in blocks:
+        for para in block.get("paragraphs", []):
+            verts = para.get("boundingBox", {}).get("vertices", [])
+            if len(verts) >= 4:
+                h = abs(verts[2].get("y", 0) - verts[0].get("y", 0))
+                if h > 0:
+                    all_heights.append(h)
+
+    median_h = sorted(all_heights)[len(all_heights) // 2] if all_heights else 20
+
+    for block in blocks:
+        for para in block.get("paragraphs", []):
+            # ── Extract text ──────────────────────────────────
+            words = para.get("words", [])
+            text  = " ".join(
+                "".join(s.get("text", "") for s in w.get("symbols", []))
+                for w in words
+            ).strip()
+
+            if not text:
+                continue
+
+            # ── Bounding box geometry ─────────────────────────
+            verts = para.get("boundingBox", {}).get("vertices", [])
+            if len(verts) < 4:
+                continue
+
+            left   = verts[0].get("x", 0)
+            right  = verts[1].get("x", 0)
+            top    = verts[0].get("y", 0)
+            bottom = verts[2].get("y", 0)
+            height = abs(bottom - top)
+            center = (left + right) / 2
+
+            # ── Deterministic style rules ─────────────────────
+
+            # Font size: proportional to median body height
+            font_size = round(12 * (height / median_h), 1)
+            font_size = max(8, min(font_size, 32))  # clamp
+
+            # Heading detection: significantly larger than median
+            is_heading    = height > median_h * 1.4
+            heading_level = (
+                1 if height > median_h * 2.0 else
+                2 if height > median_h * 1.6 else
+                3 if height > median_h * 1.4 else
+                0
+            )
+
+            # Alignment: based on x-position relative to page width
+            text_width = right - left
+            if abs(center - page_width / 2) < page_width * 0.05 and text_width < page_width * 0.7:
+                alignment = "center"
+            elif left > page_width * 0.55:
+                alignment = "right"
+            else:
+                alignment = "left"
+
+            # Bold: headings are bold
+            bold = is_heading
+
+            # Bullet detection: text-based, fully deterministic
+            is_bullet   = bool(re.match(r"^[•\-\*–]\s", text))
+            is_numbered = bool(re.match(r"^\d+[.)]\s|^[a-zA-Z][.)]\s", text))
+
+            # Space after: larger for headings
+            space_after = 12 if is_heading else 6
+
+            paragraphs.append(text)
+            styles.append({
+                "bold":         bold,
+                "italic":       False,      # Vision doesn't expose italic — keep False
+                "underline":    False,
+                "fontSize":     font_size,
+                "alignment":    alignment,
+                "spaceAfter":   space_after,
+                "isBullet":     is_bullet,
+                "isNumbered":   is_numbered,
+                "indent":       0,
+                "isHeading":    is_heading,
+                "headingLevel": heading_level,
+            })
+
+    return paragraphs, styles
+
+
+
 def parse_document(image_bytes: bytes) -> dict:
-    """
-    Zero-hallucination pipeline:
-      1. Google Vision  → paragraphs (ground-truth text, never altered)
-      2. LLM            → styles only (no text generation)
-      3. Local code     → TipTap JSON
+    log("START parse_document — STRICT DETERMINISTIC MODE")
+    t0 = time.time()
 
-    The LLM is shown the image but is only allowed to output style metadata.
-    Text in the final document comes 100% from Google Vision.
-    """
-    try:
-        log("START parse_document", f"bytes={len(image_bytes)}")
-        t0 = time.time()
+    # Stage 1 — Vision extracts text AND geometry-based styles
+    paragraphs, styles = stage1_vision_extract_with_layout(image_bytes)
 
-        # Stage 1 — Vision
-        paragraphs = stage1_vision_extract(image_bytes)
-        if not paragraphs:
-            raise ValueError("Stage 1 returned no paragraphs")
+    if not paragraphs:
+        raise ValueError("Stage 1 returned no paragraphs")
 
-        # Stage 2 — LLM style detection (formatting only)
-        styles = stage2_detect_styles(image_bytes, paragraphs)
+    # Stage 2 — REMOVED (was the hallucination source)
 
-        # Stage 3 — TipTap JSON (pure local conversion)
-        doc = stage3_to_tiptap(paragraphs, styles)
+    # Stage 3 — TipTap JSON (pure local, no LLM)
+    doc = stage3_to_tiptap(paragraphs, styles)
 
-        total_elapsed = round(time.time() - t0, 2)
-        log("SUCCESS parse_document", f"total={total_elapsed}s")
+    doc["_audit"] = {
+        "hallucination_risk": "zero",
+        "styling_source":     "vision_geometry",   # ← key change
+        "pipeline_seconds":   round(time.time() - t0, 2),
+        "engine_version":     ENGINE_VERSION,
+        "paragraph_count":    len(paragraphs),
+    }
 
-        doc["_audit"] = {
-            "hallucination_risk": "none",   # text comes 100% from Vision
-            "issues_found":       [],
-            "corrections_made":   [],
-            "illegible_fields":   [],
-            "pipeline_seconds":   total_elapsed,
-            "engine_version":     ENGINE_VERSION,
-            "paragraph_count":    len(paragraphs),
-        }
-        return doc
-
-    except Exception as e:
-        log("❌ ERROR in parse_document", repr(e))
-        traceback.print_exc()
-        raise
+    log("SUCCESS", f"total={doc['_audit']['pipeline_seconds']}s")
+    return doc
 
 
 def run_ocr_job(jobId: str):
