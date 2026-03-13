@@ -152,7 +152,8 @@ export default function HandwrittenToDocPage() {
         {/* Before / After showcase */}
         <section className="pt-14 md:pt-20 pb-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
+    
+            {/* Header */}
             <div className="text-center space-y-4 mb-16">
               <h2 className="text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight">
                 From handwritten input to publication-ready documents
@@ -161,88 +162,281 @@ export default function HandwrittenToDocPage() {
                 Clean, structured Word files — formatted for official use
               </p>
             </div>
-
-            <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-
-              {/* BEFORE */}
-              <Card className="overflow-hidden shadow-sm border border-border/60 bg-muted/40">
-                <div className="aspect-[4/3] bg-muted/30 flex items-center justify-center p-8">
-                  <div className="relative aspect-[4/3] w-full">
-                    <Image
-                      src="/images/handwritten-before1.png"
-                      alt="Handwritten notes"
-                      fill
-                      className="object-cover grayscale-[30%] contrast-90"
-                    />
-                  </div>
+    
+            {/* Cards row */}
+            <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto items-start">
+    
+              {/* ── BEFORE: Simulated handwritten paper ── */}
+              <div className="relative">
+                {/* Label */}
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/40" />
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Handwritten original
+                  </span>
                 </div>
-                <div className="p-6">
-                  <p className="text-sm text-muted-foreground text-center">
-                    Difficult to read and share digitally
-                  </p>
-                </div>
-              </Card>
-
-              {/* AFTER */}
-              <Card className="overflow-hidden shadow-lg border border-border bg-white relative">
-                <span className="absolute top-4 right-4 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Converted Word document
-                </span>
-                <div className="aspect-[4/3] bg-card border-b border-border p-8">
-                  <div className="space-y-6 text-left bg-white rounded-md border border-border/60 p-6 h-full">
-                    <div className="font-bold text-base text-foreground">Job Application</div>
-                    <div className="text-sm space-y-2">
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-muted-foreground">
-                        <p>
-                          <span className="font-medium text-foreground">Full Name:</span>{" "}
-                          Emily Johnson
+    
+                <div
+                  className="relative rounded-xl overflow-hidden border border-border/60 shadow-sm"
+                  style={{
+                    background: "#fdfaf4",
+                    /* subtle warm paper tint */
+                  }}
+                >
+                  {/* Ruled lines */}
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      backgroundImage:
+                        "repeating-linear-gradient(transparent, transparent 31px, #c8d8e840 31px, #c8d8e840 32px)",
+                      backgroundPositionY: "40px",
+                    }}
+                  />
+    
+                  {/* Red margin line */}
+                  <div
+                    className="absolute top-0 bottom-0 left-[52px] w-px pointer-events-none"
+                    style={{ background: "#e8a0a040" }}
+                  />
+    
+                  {/* Paper content */}
+                  <div
+                    className="relative px-8 pt-7 pb-8 pl-16"
+                    style={{ fontFamily: "'Caveat', cursive", minHeight: "380px" }}
+                  >
+                    {/* Hole punches */}
+                    <div className="absolute left-4 top-12 w-4 h-4 rounded-full border-2 border-border/50 bg-background/80" />
+                    <div className="absolute left-4 top-1/2 w-4 h-4 rounded-full border-2 border-border/50 bg-background/80" />
+                    <div className="absolute left-4 bottom-16 w-4 h-4 rounded-full border-2 border-border/50 bg-background/80" />
+    
+                    {/* Handwritten content */}
+                    <div className="space-y-1">
+    
+                      {/* Title — slightly slanted, heavy */}
+                      <p
+                        className="text-[22px] font-bold text-slate-700 mb-4"
+                        style={{ transform: "rotate(-0.8deg)", lineHeight: 1.3 }}
+                      >
+                        Job Application Form
+                      </p>
+    
+                      {/* Fields */}
+                      {[
+                        { label: "Full Name:", value: "Emily Johnson", rotate: "-0.4deg" },
+                        { label: "Phone:", value: "(555) 123-4567", rotate: "0.3deg" },
+                        { label: "Position:", value: "Office Assistant", rotate: "-0.6deg" },
+                        { label: "Date:", value: "March 3, 2025", rotate: "0.5deg" },
+                      ].map((f) => (
+                        <p
+                          key={f.label}
+                          className="text-[17px] text-slate-600 leading-[32px]"
+                          style={{ transform: `rotate(${f.rotate})` }}
+                        >
+                          <span className="text-slate-400 text-[15px]">{f.label}</span>{" "}
+                          <span className="text-slate-700 font-semibold">{f.value}</span>
                         </p>
-                        <p>
-                          <span className="font-medium text-foreground">Phone:</span>{" "}
-                          (555) 123-4567
-                        </p>
-                        <p className="col-span-2">
-                          <span className="font-medium text-foreground">Position Applied For:</span>{" "}
-                          Office Assistant
-                        </p>
+                      ))}
+    
+                      {/* Divider scribble */}
+                      <div className="my-3">
+                        <svg width="180" height="8" viewBox="0 0 180 8" fill="none">
+                          <path
+                            d="M0 4 Q20 1 40 5 Q60 8 80 3 Q100 0 120 5 Q140 8 160 3 Q170 1 180 4"
+                            stroke="#94a3b8"
+                            strokeWidth="1.5"
+                            fill="none"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </div>
+    
+                      <p
+                        className="text-[16px] font-bold text-slate-600 mt-1 uppercase tracking-wide"
+                        style={{ transform: "rotate(-0.3deg)", fontSize: "15px" }}
+                      >
+                        Employment History:
+                      </p>
+    
+                      {/* Rough table */}
+                      <div
+                        className="mt-2 border border-slate-300/70 rounded"
+                        style={{ fontFamily: "'Caveat', cursive" }}
+                      >
+                        {/* Header row */}
+                        <div className="grid grid-cols-3 border-b border-slate-300/70 bg-slate-50/60">
+                          {["Date Range", "Employer", "Position"].map((h) => (
+                            <div
+                              key={h}
+                              className="px-2 py-1.5 text-[13px] font-semibold text-slate-500"
+                              style={{ transform: "rotate(-0.2deg)" }}
+                            >
+                              {h}
+                            </div>
+                          ))}
+                        </div>
+                        {/* Data row */}
+                        <div className="grid grid-cols-3">
+                          {["05/2020–08/2022", "ABC Company", "Receptionist"].map((v, i) => (
+                            <div
+                              key={i}
+                              className="px-2 py-2 text-[15px] text-slate-700 border-r border-slate-200/60 last:border-r-0"
+                              style={{ transform: `rotate(${i % 2 === 0 ? "0.4deg" : "-0.3deg"})` }}
+                            >
+                              {v}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+    
+                      {/* Signature line */}
+                      <div className="mt-6 flex items-end gap-3">
+                        <span className="text-[14px] text-slate-400">Signature:</span>
+                        <svg width="90" height="28" viewBox="0 0 90 28" fill="none">
+                          <path
+                            d="M5 22 C15 5, 25 8, 30 14 C35 20, 38 8, 45 12 C52 16, 55 6, 65 10 C72 13, 78 8, 85 14"
+                            stroke="#475569"
+                            strokeWidth="1.8"
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
                       </div>
                     </div>
-                    <div className="h-px bg-border" />
-                    <div className="text-sm space-y-2">
-                      <p className="font-medium text-foreground uppercase tracking-wide">
-                        Employment History
-                      </p>
-                      <div className="border border-border rounded-md overflow-hidden">
-                        <table className="w-full text-xs">
-                          <thead className="bg-muted/30 text-muted-foreground">
+                  </div>
+    
+                  {/* Subtle paper-worn bottom edge */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 h-6 pointer-events-none"
+                    style={{
+                      background:
+                        "linear-gradient(to top, rgba(200,190,170,0.15), transparent)",
+                    }}
+                  />
+                </div>
+    
+                <p className="mt-3 text-[12px] text-muted-foreground text-center">
+                  Hard to read · No digital copy · Can&apos;t be shared or edited
+                </p>
+              </div>
+    
+              {/* ── AFTER: Clean Word doc ── */}
+              <div className="relative">
+                {/* Label */}
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 rounded-full bg-primary/60" />
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-primary/80">
+                    Converted Word document
+                  </span>
+                </div>
+    
+                <div className="rounded-xl overflow-hidden border border-border bg-white shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
+    
+                  {/* Word toolbar chrome */}
+                  <div className="bg-[#2b579a] px-4 py-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-white/20 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-[9px] font-bold">W</span>
+                      </div>
+                      <span className="text-white/80 text-[10px] font-medium">
+                        JobApplication_Emily_Johnson.docx
+                      </span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
+                    </div>
+                  </div>
+    
+                  {/* Ribbon strip */}
+                  <div className="bg-[#f3f2f1] border-b border-[#e1dfdd] px-4 py-1 flex gap-3">
+                    {["Home", "Insert", "Layout", "Review"].map((t) => (
+                      <span key={t} className="text-[10px] text-[#605e5c]">{t}</span>
+                    ))}
+                  </div>
+    
+                  {/* Document page */}
+                  <div className="bg-[#f8f9fa] p-4">
+                    <div className="bg-white shadow-sm border border-[#e8e8e8] px-8 py-7 space-y-5">
+    
+                      {/* Doc title */}
+                      <div>
+                        <h3 className="text-[15px] font-bold text-slate-800 tracking-tight">
+                          Job Application
+                        </h3>
+                        <div className="mt-1 h-[2px] w-full bg-slate-200" />
+                      </div>
+    
+                      {/* Fields grid */}
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[12px]">
+                        {[
+                          { label: "Full Name", value: "Emily Johnson" },
+                          { label: "Phone", value: "(555) 123-4567" },
+                          { label: "Position Applied For", value: "Office Assistant", full: true },
+                          { label: "Date", value: "March 3, 2025" },
+                        ].map((f) => (
+                          <p
+                            key={f.label}
+                            className={f.full ? "col-span-2" : ""}
+                          >
+                            <span className="font-semibold text-slate-700">{f.label}: </span>
+                            <span className="text-slate-600">{f.value}</span>
+                          </p>
+                        ))}
+                      </div>
+    
+                      {/* Divider */}
+                      <div className="h-px bg-slate-200" />
+    
+                      {/* Employment table */}
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Employment History
+                        </p>
+                        <table className="w-full text-[11px] border border-slate-200 rounded overflow-hidden">
+                          <thead className="bg-slate-50 text-slate-500 uppercase">
                             <tr>
-                              <th className="px-2 py-1 text-left text-[11px] font-medium uppercase tracking-wide">Date Range</th>
-                              <th className="px-2 py-1 text-left text-[11px] font-medium uppercase tracking-wide">Employer</th>
-                              <th className="px-2 py-1 text-left text-[11px] font-medium uppercase tracking-wide">Position</th>
+                              {["Date Range", "Employer", "Position"].map((h) => (
+                                <th key={h} className="px-3 py-1.5 text-left font-medium tracking-wide border-b border-slate-200">
+                                  {h}
+                                </th>
+                              ))}
                             </tr>
                           </thead>
-                          <tbody className="text-muted-foreground">
+                          <tbody className="text-slate-600">
                             <tr>
-                              <td className="px-2 py-1">05/2020 – 08/2022</td>
-                              <td className="px-2 py-1">ABC Company</td>
-                              <td className="px-2 py-1">Receptionist</td>
+                              <td className="px-3 py-2 border-r border-slate-100">05/2020 – 08/2022</td>
+                              <td className="px-3 py-2 border-r border-slate-100">ABC Company</td>
+                              <td className="px-3 py-2">Receptionist</td>
                             </tr>
                           </tbody>
                         </table>
                       </div>
+    
+                      {/* Signature block */}
+                      <div className="pt-2 flex items-end gap-6">
+                        <div>
+                          <div className="w-28 border-b border-slate-400 mb-1" />
+                          <p className="text-[10px] text-slate-400">Signature</p>
+                        </div>
+                        <div>
+                          <div className="w-20 border-b border-slate-400 mb-1" />
+                          <p className="text-[10px] text-slate-400">Date</p>
+                        </div>
+                      </div>
+    
                     </div>
-                    <p className="text-xs text-muted-foreground pt-2">
-                      Converted from handwritten form • Fully editable in Word or Google Docs
-                    </p>
                   </div>
+    
                 </div>
-                <div className="p-6 bg-primary/5">
-                  <p className="text-xs text-muted-foreground text-center">
-                    Fully editable. Formatting preserved.
-                  </p>
-                </div>
-              </Card>
-
+    
+                {/* Trust line */}
+                <p className="mt-3 text-[12px] text-muted-foreground text-center">
+                  Fully editable · Formatting preserved · Ready for official use
+                </p>
+              </div>
+    
             </div>
           </div>
         </section>
