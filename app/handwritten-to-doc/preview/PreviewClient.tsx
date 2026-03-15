@@ -3,14 +3,28 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
-import { JsonEditor } from "@/components/editor/JsonEditor";
+import { generateHTML } from "@tiptap/html";
+import StarterKit from "@tiptap/starter-kit";
+import TextAlign from "@tiptap/extension-text-align";
+import Underline from "@tiptap/extension-underline";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { loadJob, updateJob } from "@/lib/jobStore";
 import type { JobData } from "@/types/job";
-import { generateHTML } from "@tiptap/html";
-import StarterKit from "@tiptap/starter-kit";
-import { BeforeAfterSlider } from "@/components/BeforeAfterSlider"; // ← new import
+import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
+
+// ── Render TipTap JSON → safe HTML string (same as BeforeAfterSlider) ─────────
+function renderHtml(doc: any): string {
+  try {
+    return generateHTML(doc, [
+      StarterKit,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Underline,
+    ]);
+  } catch {
+    return "<p>Preview unavailable</p>";
+  }
+}
 
 export default function PreviewPage() {
   const router = useRouter();
@@ -204,9 +218,28 @@ export default function PreviewPage() {
     );
   }
 
+  // ── Rendered HTML for paid preview ──────────────────────────────────────────
+  const previewHtml = job.contentJson ? renderHtml(job.contentJson) : "";
+
   return (
     <>
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
+
+      {/* Scoped preview styles */}
+      <style>{`
+        .doc-preview-body { font-family: 'Times New Roman', Georgia, serif; font-size: 13px; line-height: 1.7; color: #1e293b; }
+        .doc-preview-body h1 { font-size: 18px; font-weight: 700; margin: 0 0 10px; }
+        .doc-preview-body h2 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+        .doc-preview-body h3 { font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+        .doc-preview-body p  { margin: 0 0 8px; }
+        .doc-preview-body ul { list-style: disc; padding-left: 20px; margin: 6px 0; }
+        .doc-preview-body ol { list-style: decimal; padding-left: 20px; margin: 6px 0; }
+        .doc-preview-body li { margin: 2px 0; }
+        .doc-preview-body strong { font-weight: 600; }
+        .doc-preview-body blockquote { border-left: 3px solid #e2e8f0; padding-left: 12px; margin: 8px 0; color: #64748b; }
+        .doc-preview-body code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 12px; }
+        .doc-preview-body hr { border: none; border-top: 1px solid #e2e8f0; margin: 12px 0; }
+      `}</style>
 
       <div className="min-h-screen flex flex-col">
         <Header />
@@ -215,31 +248,45 @@ export default function PreviewPage() {
           <section className="mx-auto max-w-7xl px-6 py-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
 
-              {/* ── LEFT — document area ───────────────────────────────── */}
+              {/* ── LEFT — document area ──────────────────────────────── */}
               <div className="lg:col-span-8 flex flex-col gap-4">
 
-                {/* ── BEFORE / AFTER slider (unpaid preview) ── */}
+                {/* Unpaid: before/after slider */}
                 {!isPaid && job.contentJson && (
                   <BeforeAfterSlider
                     contentJson={job.contentJson}
-                    jobId={job.jobId}          // ← add this; the component derives /api/job-image?jobId=xxx
-                    height={560}               // ← slightly taller for better document preview
+                    jobId={job.jobId}
+                    height={560}
                   />
                 )}
 
-                {/* ── Full editor (after payment) ── */}
-                {isPaid && (
-                  <div className="relative">
-                    <JsonEditor
-                      initialDoc={job.contentJson}
-                      chrome="canvas"
-                      editable={false}
-                    />
+                {/* Paid: clean HTML document preview ← THE FIX */}
+                {isPaid && previewHtml && (
+                  <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    {/* Page chrome header */}
+                    <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200">
+                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Converted Document</span>
+                      <div className="flex gap-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-300" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-300" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-300" />
+                      </div>
+                    </div>
+
+                    {/* A4-style document page */}
+                    <div className="overflow-y-auto" style={{ maxHeight: 560 }}>
+                      <div className="mx-auto my-6 bg-white shadow-md border border-slate-100" style={{ maxWidth: 620, padding: "40px 56px", minHeight: 400 }}>
+                        <div
+                          className="doc-preview-body"
+                          dangerouslySetInnerHTML={{ __html: previewHtml }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* ── RIGHT — sticky sidebar ─────────────────────────────── */}
+              {/* ── RIGHT — sticky sidebar ───────────────────────────── */}
               <div className="lg:col-span-4">
                 <div className="sticky top-6 space-y-7">
 
@@ -261,7 +308,6 @@ export default function PreviewPage() {
                         <p className="mt-3 text-center text-xs text-slate-500">
                           One-time payment • Download or edit after unlock
                         </p>
-                        {/* ── Social proof ── */}
                         <p className="mt-2 text-center text-xs text-slate-400">
                           Used by{" "}
                           <span className="font-semibold text-slate-600">500+ legal professionals</span>{" "}
@@ -272,9 +318,10 @@ export default function PreviewPage() {
                       <div className="space-y-3">
                         <button
                           onClick={() => handleDownload("docx")}
-                          className="w-full rounded-md bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700 transition"
+                          disabled={state === "exporting"}
+                          className="w-full rounded-md bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700 transition disabled:opacity-60"
                         >
-                          Download DOCX
+                          {state === "exporting" ? "Downloading…" : state === "complete" ? "Downloaded ✓" : "Download DOCX"}
                         </button>
                         <button
                           onClick={() => router.push(`/handwritten-to-doc/editor?jobId=${job.jobId}`)}
@@ -286,7 +333,7 @@ export default function PreviewPage() {
                     )}
                   </div>
 
-                  {/* BENEFITS */}
+                  {/* BENEFITS (unpaid only) */}
                   {!isPaid && (
                     <div className="border bg-white p-5">
                       <h4 className="text-xs font-medium text-slate-700 mb-3 uppercase tracking-wide">Included</h4>
@@ -302,18 +349,16 @@ export default function PreviewPage() {
                   <div className="rounded-xl border bg-white p-5">
                     <h4 className="text-xs font-medium text-slate-700 mb-3 uppercase tracking-wide">Document details</h4>
                     <ul className="space-y-1 text-xs text-slate-500">
-                      <li>Words: {job.wordCount ?? 0}</li>
+                      <li>Words: {job.wordCount ?? countWordsFromTipTap(job.contentJson)}</li>
                       <li>Pages: {Math.max(1, Math.ceil((job.wordCount ?? 0) / 250))}</li>
                     </ul>
                   </div>
-
                 </div>
               </div>
-
             </div>
           </section>
 
-          {/* ── PAYMENT MODAL ───────────────────────────────────────────── */}
+          {/* ── PAYMENT MODAL ─────────────────────────────────────────── */}
           {showPayConfirm && pendingType && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-slate-200">
@@ -327,7 +372,7 @@ export default function PreviewPage() {
                   <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
                     <span className="text-sm text-slate-600">Total payable</span>
                     <span className="text-2xl font-bold text-slate-900">
-                      {paymentGateway === "paypal" ? "$5" : paymentGateway === "razorpay" ? "59" : "—"}
+                      {paymentGateway === "paypal" ? "$5" : paymentGateway === "razorpay" ? "₹59" : "—"}
                     </span>
                   </div>
                   <ul className="space-y-2 text-sm text-slate-700">
@@ -352,7 +397,7 @@ export default function PreviewPage() {
                         return;
                       }
                       if (paymentGateway === "razorpay" && razorpayOptions) {
-                        const rzp = new window.Razorpay({
+                        const rzp = new (window as any).Razorpay({
                           ...razorpayOptions,
                           handler: (response: any) => {
                             setIsPaying(false);

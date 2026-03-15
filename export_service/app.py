@@ -375,12 +375,17 @@ def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], li
                 # Vision doesn't expose italic at symbol level reliably;
                 # we track that we checked and warn the user (see _audit below)
 
+                # BEFORE
                 if confidence < 0.7:
-                    # Flag low-confidence word, preserve the text with a marker
                     word_strings.append(f"[?:{word_text}]")
                     low_conf_count += 1
                 else:
                     word_strings.append(word_text)
+
+                # AFTER
+                word_strings.append(word_text)
+                if confidence < 0.7:
+                    low_conf_count += 1  # still track count for the audit log, just don't show markers
 
             text = " ".join(word_strings).strip()
             if not text:
