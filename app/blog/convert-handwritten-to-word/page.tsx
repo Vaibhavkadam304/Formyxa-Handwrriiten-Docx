@@ -122,7 +122,7 @@ export default function ConvertHandwrittenToWordPage() {
                 Contents
               </p>
               {sections.map((s) => (
-                
+                <a
                   key={s.id}
                   href={`#section-${s.id}`}
                   className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
