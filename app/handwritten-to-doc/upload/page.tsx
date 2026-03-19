@@ -131,13 +131,15 @@ export default function UploadPage() {
     <div className="min-h-screen flex flex-col">
       <Header />
       <main className="flex-1 bg-muted/30">
-        <section className="mx-auto max-w-3xl px-4 py-12 space-y-6">
+        <section className="mx-auto max-w-4xl px-4 py-12 space-y-6">
+          <div className="bg-background rounded-2xl shadow-xl border border-border p-6">
           <UploadArea
             onFileUpload={handleFileUpload}
             selectedFiles={selectedFiles}
             uploading={uploading}
             onConvert={handleConvert}
           />
+         </div>
           <InfoBlock />
         </section>
       </main>
@@ -146,21 +148,45 @@ export default function UploadPage() {
   );
 }
 
+
 function InfoBlock() {
   return (
-    <>
-      <div className="flex gap-3 bg-muted rounded-lg p-4 border">
-        <Info className="h-5 w-5 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          Upload up to 5 files at once. Preview before you commit — no credits deducted yet.
-        </p>
+    <div className="space-y-3">
+
+      {/* Info 1 */}
+      <div className="flex items-start gap-3 rounded-xl border border-border bg-background px-4 py-4 shadow-sm hover:shadow-md transition-all">
+        
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+          <Info className="h-4 w-4" />
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            Upload up to 5 files at once
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Preview before you commit — no credits deducted yet.
+          </p>
+        </div>
       </div>
-      <div className="flex gap-3 bg-muted/50 rounded-lg p-4 border">
-        <Shield className="h-5 w-5 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          Files are processed securely and deleted automatically.
-        </p>
+
+      {/* Info 2 */}
+      <div className="flex items-start gap-3 rounded-xl border border-border bg-background px-4 py-4 shadow-sm hover:shadow-md transition-all">
+        
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 shrink-0">
+          <Shield className="h-4 w-4" />
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            Secure processing
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Files are encrypted and deleted automatically after processing.
+          </p>
+        </div>
       </div>
-    </>
-  );
+
+    </div>
+  )
 }

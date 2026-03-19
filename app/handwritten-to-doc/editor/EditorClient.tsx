@@ -105,6 +105,10 @@ function preprocessDoc(node: any): any {
   return clone;
 }
 
+
+
+
+
 // ─── Slash Items ───────────────────────────────────────────────────────────
 
 const SLASH_ITEMS: SlashMenuItem[] = [
@@ -190,6 +194,28 @@ export default function EditorClient() {
     if (!stored.contentJson) { router.replace(`/handwritten-to-doc/preview?jobId=${jobId}`); return; }
     setJob(stored);
   }, [jobId, router]);
+
+
+  function TbBtn({ active, onClick, title, children }: {
+  active?: boolean; onClick: () => void; title: string; children: React.ReactNode;
+}) {
+  return (
+    <button
+      onMouseDown={(e) => e.preventDefault()} // ← add this
+      onClick={onClick}
+      title={title}
+      className={[
+        "inline-flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-100",
+        "text-slate-500 cursor-pointer select-none",
+        active
+          ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+          : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-700",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
 
   // ── Editor ────────────────────────────────────────────────────────────────
   const editor = useEditor({
@@ -295,12 +321,12 @@ export default function EditorClient() {
   }, [editor]);
 
   // ── Scroll sync ────────────────────────────────────────────────────────────
-  const handleEditorScroll = useCallback(() => {
-    const el = editorScrollRef.current, im = imagePaneScrollRef.current;
-    if (!el || !im) return;
-    const pct = el.scrollTop / (el.scrollHeight - el.clientHeight || 1);
-    im.scrollTop = pct * (im.scrollHeight - im.clientHeight);
-  }, []);
+  // const handleEditorScroll = useCallback(() => {
+  //   const el = editorScrollRef.current, im = imagePaneScrollRef.current;
+  //   if (!el || !im) return;
+  //   const pct = el.scrollTop / (el.scrollHeight - el.clientHeight || 1);
+  //   im.scrollTop = pct * (im.scrollHeight - im.clientHeight);
+  // }, []);
 
   // ── Divider drag ──────────────────────────────────────────────────────────
   const startDividerDrag = useCallback((e: React.MouseEvent) => { isDraggingDivider.current = true; e.preventDefault(); }, []);
@@ -695,7 +721,6 @@ export default function EditorClient() {
             <div
               ref={editorScrollRef}
               className="flex-1 overflow-y-auto ec-editor-scroll px-6"
-              onScroll={handleEditorScroll}
               style={{ userSelect: "text", background: "#fff" }}
             >
               {/* Ghost overlay */}
@@ -711,7 +736,14 @@ export default function EditorClient() {
                     style={{ top: bubbleMenu.top, left: bubbleMenu.left }}
                     onMouseDown={(e) => e.preventDefault()}
                   >
-                    <button className={`ec-bbl-btn ${isActive("bold") ? "active" : ""}`}      onClick={() => editor.chain().focus().toggleBold().run()}      title="Bold"><Bold size={13} /></button>
+                    <button
+                      onMouseDown={(e) => e.preventDefault()} // ← add to each
+                      className={`ec-bbl-btn ${isActive("bold") ? "active" : ""}`}
+                      onClick={() => editor.chain().focus().toggleBold().run()}
+                      title="Bold"
+                    >
+                      <Bold size={13} />
+                    </button>
                     <button className={`ec-bbl-btn ${isActive("italic") ? "active" : ""}`}    onClick={() => editor.chain().focus().toggleItalic().run()}    title="Italic"><Italic size={13} /></button>
                     <button className={`ec-bbl-btn ${isActive("underline") ? "active" : ""}`} onClick={() => editor.chain().focus().toggleUnderline().run()} title="Underline"><UnderlineIcon size={13} /></button>
                     <div className="ec-bbl-sep" />

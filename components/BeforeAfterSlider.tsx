@@ -87,9 +87,38 @@ export function BeforeAfterSlider({
     <div className="w-full rounded-lg border border-slate-200 overflow-hidden shadow-sm bg-white">
 
       {/* ── Labels ─────────────────────────────────────── */}
-      <div className="flex justify-between px-4 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold tracking-wide text-slate-500 uppercase select-none">
-        <span>Before — Original Scan</span>
-        <span>After — Converted Document</span>
+      {/* ── Styled Header ─────────────────────────────── */}
+       <div className="flex items-center justify-between gap-4 px-5 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-200 overflow-hidden">
+
+
+        {/* LEFT */}
+        <div className="flex items-center gap-2 min-w-0 shrink-0">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            Before
+          </span>
+          <span className="text-xs text-slate-400">—</span>
+          <span className="text-sm font-semibold text-slate-700">
+            Original Scan
+          </span>
+        </div>
+
+        {/* CENTER DIVIDER */}
+        {/* <div className="hidden lg:block h-5 w-px bg-slate-200" /> */}
+
+        {/* RIGHT */}
+        <div className="flex items-center gap-2 min-w-0 whitespace-nowrap">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            After
+          </span>
+          <span className="text-xs text-slate-400">—</span>
+          <span className="text-sm font-semibold text-slate-700">
+            Converted Document
+          </span>
+
+          {/* <span className="ml-2 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-medium px-2 py-0.5 border border-emerald-200">
+            Converted
+          </span> */}
+        </div>
       </div>
 
       {/* ── Slider container ───────────────────────────── */}
@@ -106,9 +135,13 @@ export function BeforeAfterSlider({
 
         {/* ══ RIGHT PANEL — converted document (full width, underneath) ══ */}
         <div
-          className="absolute inset-0 overflow-y-auto bg-white"
-          style={{ cursor: dragging ? "col-resize" : "default" }}
-        >
+            className="absolute inset-0 overflow-y-auto bg-white"
+            style={{
+              cursor: dragging ? "col-resize" : "default",
+              scrollbarWidth: "thin",
+              scrollbarColor: "rgba(100,116,139,0.25) transparent",
+            }}
+          >
           <div
             className="px-8 py-6 text-sm leading-relaxed text-slate-800 pointer-events-none"
             style={{ fontFamily: "'Times New Roman', serif", fontSize: 13 }}
@@ -139,43 +172,39 @@ export function BeforeAfterSlider({
           )}
 
           {/* BEFORE badge */}
-          <span className="absolute top-3 left-3 bg-slate-800/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm">
+          {/* <span className="absolute top-3 left-3 bg-slate-800/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm">
             ORIGINAL SCAN
-          </span>
+          </span> */}
         </div>
 
         {/* ══ DIVIDER HANDLE ══ */}
         <div
-          className="absolute top-0 bottom-0 z-20 flex items-center justify-center"
-          style={{
-            left:      `${position}%`,
-            transform: "translateX(-50%)",
-            width:     28,
-            cursor:    "col-resize",
-          }}
-          onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e); }}
-          onTouchStart={(e) => { e.stopPropagation(); onTouchStart(); }}
-        >
-          {/* thin line */}
-          <div className="absolute inset-y-0 left-1/2 w-0.5 bg-blue-500/80 -translate-x-1/2" />
+            className="absolute top-0 bottom-0 z-20 flex items-center justify-center"
+            style={{
+              left:      `${position}%`,
+              transform: "translateX(-50%)",
+              width:     40,
+              cursor:    "col-resize",
+            }}
+            onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e); }}
+            onTouchStart={(e) => { e.stopPropagation(); onTouchStart(); }}
+          >
+            {/* thin line */}
+            <div className="absolute inset-y-0 left-1/2 w-0.5 bg-blue-500/80 -translate-x-1/2" />
 
-          {/* pill */}
-          <div className="relative z-10 flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 shadow-lg border-2 border-white">
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-white fill-current">
-              <path d="M5 3l-3 5 3 5V3zm6 0v10l3-5-3-5z" />
-            </svg>
+            {/* chevron pill */}
+            <div className="relative z-10 flex items-center justify-center gap-0.5 h-8 px-2 rounded-full bg-white shadow-md border border-slate-200">
+              {/* left chevron */}
+              <svg viewBox="0 0 8 14" className="w-2.5 h-2.5 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6,1 1,7 6,13" />
+              </svg>
+              {/* right chevron */}
+              <svg viewBox="0 0 8 14" className="w-2.5 h-2.5 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="2,1 7,7 2,13" />
+              </svg>
+            </div>
           </div>
-        </div>
 
-        {/* ══ AFTER badge (always visible on right side) ══ */}
-        <div
-          className="absolute top-3 z-10 pointer-events-none"
-          style={{ left: `calc(${position}% + 18px)` }}
-        >
-          <span className="bg-emerald-600/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm whitespace-nowrap">
-            CONVERTED
-          </span>
-        </div>
 
       </div>
 

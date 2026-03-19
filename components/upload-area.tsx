@@ -111,9 +111,9 @@ export default function UploadArea({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <div className="flex flex-col items-center px-8 py-12 text-center">
+        <div className="flex flex-col items-center px-8 pt-12 pb-6 text-center">
           {/* Icon */}
-          <div className="mb-5 rounded-full bg-primary/10 p-4">
+          <div className="mb-5 rounded-full bg-primary/10 p-5 shadow-inner">
             <Upload className="h-8 w-8 text-primary" />
           </div>
 
@@ -137,7 +137,7 @@ export default function UploadArea({
           )}
 
           {/* Strict Mode */}
-          <div className="mt-6 w-full max-w-md rounded-lg border bg-muted/40 p-4 text-left">
+          <div className="mt-6 w-full max-w-md rounded-lg border border-border p-4 bg-muted/30 hover:bg-muted/50 transition text-left">
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -166,10 +166,10 @@ export default function UploadArea({
               {selectedFiles.map((file, i) => (
                 <div
                   key={`${file.name}-${file.size}`}
-                  className="flex items-center justify-between gap-2 rounded-md bg-muted/40 border px-4 py-2 text-sm"
+                  className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm shadow-sm hover:bg-muted/30 transition"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <FileText className="h-4 w-4 shrink-0 text-primary" />
                     <span className="truncate font-medium">{file.name}</span>
                     <span className="shrink-0 text-muted-foreground text-xs">
                       {(file.size / 1024).toFixed(0)} KB
@@ -220,13 +220,16 @@ export default function UploadArea({
           {selectedFiles.length === 0 && (
             <Button
               size="lg"
-              className="mt-8"
+              className="mt-8 h-11 px-6 text-base font-semibold shadow-md hover:shadow-lg transition-all"
               type="button"
               onClick={() => fileInputRef.current?.click()}
             >
               Select Files
             </Button>
           )}
+          <p className="text-xs text-muted-foreground mt-3">
+            No signup required • Files auto-deleted for privacy
+          </p>
         </div>
 
         <input

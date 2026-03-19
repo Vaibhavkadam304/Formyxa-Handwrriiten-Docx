@@ -1,23 +1,27 @@
 # app.py
 # =============================================================
-# Engine v3.1.0 — Zero-Hallucination Vision Pipeline + DOCX Export
-# Both run on ONE FastAPI server (port 8000)
+# Engine v3.2.0 — Zero-Hallucination Vision Pipeline + DOCX Export
+# GCP-Native: Firestore (job store) + GCS (file store)
+# No Redis. No local file storage. Runs cleanly on Cloud Run.
 #
 # ACTIVE PIPELINE:
-#   preprocess_image              → deskew + denoise + upscale
-#   stage1_vision_extract_with_layout → Google Vision (text + geometry styles)
-#   stage3_to_tiptap              → pure local Python → TipTap JSON
+#   preprocess_image                   → deskew + denoise + upscale
+#   stage1_vision_extract_with_layout  → Google Vision (text + geometry styles)
+#   stage3_to_tiptap                   → pure local Python → TipTap JSON
 #
 # Zero LLM calls in the OCR path.
 # Text is 100% ground-truth from Vision — never invented.
 #
-# .env:
-#   HANDW_API_BASE=http://localhost:8000
-#   FLASK_DOCX_URL=http://localhost:8000/generate-docx
-#   REDIS_URL=redis://...
+# .env (local dev):
+#   GCS_BUCKET=your-bucket-name
 #   GOOGLE_VISION_API_KEY=...
-#   OPENROUTER_API_KEY=...   (still required at startup — kept for DOCX path)
+#   OPENROUTER_API_KEY=...
 #   HANDW_API_KEY=...
+#   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json  ← local only
+#   PORT=8000
+#
+# On Cloud Run: all env vars injected via --set-env-vars
+# Auth: Application Default Credentials (no key file needed on Cloud Run)
 # =============================================================
 
 import os
@@ -32,8 +36,8 @@ import fitz          # PyMuPDF
 import time
 import numpy as np
 import cv2
-import redis as redis_lib
 import mimetypes
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,8 +52,10 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from dotenv import load_dotenv
+# GCP clients
+from google.cloud import firestore, storage
 
+from dotenv import load_dotenv
 load_dotenv()
 
 
@@ -57,11 +63,12 @@ load_dotenv()
 # GLOBAL CONFIG
 # ─────────────────────────────────────────────────────────────
 
-ENGINE_VERSION     = "v3.1.0"
+ENGINE_VERSION     = "v3.2.0"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL     = "https://openrouter.ai/api/v1/chat/completions"
 MODEL              = os.getenv("OCR_MODEL", "google/gemini-2.0-flash-001")
 MAX_PDF_PAGES      = 20
+GCS_BUCKET         = os.getenv("GCS_BUCKET")
 
 OCR_HEADERS = {
     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -72,6 +79,9 @@ OCR_HEADERS = {
 
 if not OPENROUTER_API_KEY:
     raise RuntimeError("OPENROUTER_API_KEY not set")
+
+if not GCS_BUCKET:
+    raise RuntimeError("GCS_BUCKET not set")
 
 BASE_DIR      = os.path.dirname(__file__)
 BASE_TEMPLATE = os.path.join(BASE_DIR, "base.docx")
@@ -88,7 +98,7 @@ if not API_KEY:
 # FASTAPI APP + MIDDLEWARE
 # ─────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Handwritten-to-Doc Engine v3.1 (Zero-Hallucination)")
+app = FastAPI(title="Handwritten-to-Doc Engine v3.2 (GCP-Native)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,36 +121,68 @@ async def api_key_guard(request: Request, call_next):
 
 
 # ─────────────────────────────────────────────────────────────
-# JOB STORE — Redis
+# GCP CLIENTS  (lazy singletons — avoids cold-start overhead)
 # ─────────────────────────────────────────────────────────────
 
-JOB_TTL = 60 * 60 * 3  # 3 hours
+_fs_client  = None
+_gcs_client = None
 
-def _get_redis():
-    url = os.getenv("REDIS_URL")
-    if not url:
-        raise RuntimeError("REDIS_URL env var not set")
-    return redis_lib.from_url(url, decode_responses=True)
+def _firestore() -> firestore.Client:
+    global _fs_client
+    if _fs_client is None:
+        _fs_client = firestore.Client()
+    return _fs_client
 
-def load_job(jobId: str):
+def _gcs() -> storage.Client:
+    global _gcs_client
+    if _gcs_client is None:
+        _gcs_client = storage.Client()
+    return _gcs_client
+
+
+# ─────────────────────────────────────────────────────────────
+# JOB STORE — Firestore  (replaces Redis)
+# Free tier: 50,000 reads / 20,000 writes per day
+# ─────────────────────────────────────────────────────────────
+
+def load_job(jobId: str) -> Optional[dict]:
+    """Read a job document from Firestore."""
     try:
-        r   = _get_redis()
-        raw = r.get(f"job:{jobId}")
-        return json.loads(raw) if raw else None
+        doc = _firestore().collection("jobs").document(jobId).get()
+        return doc.to_dict() if doc.exists else None
     except Exception as e:
-        log("⚠️ Redis load_job error", repr(e))
+        log("⚠️ Firestore load_job error", repr(e))
         return None
 
+
 def update_job(jobId: str, **updates):
+    """Merge updates into a Firestore job document (creates if missing)."""
     try:
-        r        = _get_redis()
-        key      = f"job:{jobId}"
-        raw      = r.get(key)
-        existing = json.loads(raw) if raw else {"jobId": jobId}
-        existing.update(updates)
-        r.setex(key, JOB_TTL, json.dumps(existing))
+        ref = _firestore().collection("jobs").document(jobId)
+        ref.set(updates, merge=True)
     except Exception as e:
-        log("⚠️ Redis update_job error", repr(e))
+        log("⚠️ Firestore update_job error", repr(e))
+
+
+# ─────────────────────────────────────────────────────────────
+# FILE STORE — Google Cloud Storage  (replaces local uploads/)
+# Free tier: 5 GB storage, 5,000 Class A ops / month
+# ─────────────────────────────────────────────────────────────
+
+def gcs_upload(data: bytes, gcs_path: str, content_type: str = "application/octet-stream") -> str:
+    """Upload bytes to GCS and return the blob path (not a public URL)."""
+    bucket = _gcs().bucket(GCS_BUCKET)
+    blob   = bucket.blob(gcs_path)
+    blob.upload_from_string(data, content_type=content_type)
+    log("GCS upload", f"gs://{GCS_BUCKET}/{gcs_path}")
+    return gcs_path
+
+
+def gcs_download(gcs_path: str) -> bytes:
+    """Download bytes from GCS."""
+    bucket = _gcs().bucket(GCS_BUCKET)
+    blob   = bucket.blob(gcs_path)
+    return blob.download_as_bytes()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -218,17 +260,9 @@ def to_png_bytes(raw_bytes: bytes) -> bytes:
     return buf.tobytes()
 
 
-# ── FIX 1: Image pre-processing — deskew + upscale + denoise ─
+# ── Image pre-processing: deskew + upscale + denoise ─────────
 
 def preprocess_image(image_bytes: bytes) -> bytes:
-    """
-    Runs before Vision to improve OCR accuracy:
-      1. Deskew   — corrects rotated scans (common with phone photos)
-      2. Upscale  — ensures minimum resolution for Vision
-      3. Denoise  — removes scanner noise / JPEG artifacts
-
-    Safe to call on already-clean images — each step is conditional.
-    """
     log("PRE-PROCESS — deskew + upscale + denoise")
     t0  = time.time()
     img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
@@ -237,18 +271,15 @@ def preprocess_image(image_bytes: bytes) -> bytes:
         log("⚠️ preprocess_image: could not decode — returning original bytes")
         return image_bytes
 
-    # ── 1. Deskew ────────────────────────────────────────────
+    # 1. Deskew
     try:
         gray   = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # threshold to find dark pixels (text)
         _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         coords = np.column_stack(np.where(thresh > 0))
-        if len(coords) > 100:                        # need enough points to be meaningful
+        if len(coords) > 100:
             angle = cv2.minAreaRect(coords)[-1]
             if angle < -45:
                 angle = 90 + angle
-            # Only correct if skew is significant (> 0.3°) but not extreme (< 15°)
-            # Extreme angles usually mean a portrait/landscape mismatch, not skew
             if 0.3 < abs(angle) < 15:
                 (h, w)  = img.shape[:2]
                 M       = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
@@ -261,18 +292,16 @@ def preprocess_image(image_bytes: bytes) -> bytes:
     except Exception as e:
         log("⚠️ Deskew failed (non-fatal)", repr(e))
 
-    # ── 2. Upscale if too small ───────────────────────────────
+    # 2. Upscale if too small
     h, w = img.shape[:2]
     if max(h, w) < 1500:
         scale = 1500 / max(h, w)
         img   = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         log("Upscale applied", f"{w}×{h} → {img.shape[1]}×{img.shape[0]}")
 
-    # ── 3. Denoise ────────────────────────────────────────────
-    # fastNlMeansDenoisingColored is slow on large images — cap at 3000px
+    # 3. Denoise
     h, w = img.shape[:2]
     if max(h, w) > 3000:
-        # Downscale for denoising, then upscale back
         scale     = 3000 / max(h, w)
         small     = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
         denoised  = cv2.fastNlMeansDenoisingColored(small, None, 10, 10, 7, 21)
@@ -292,18 +321,6 @@ def preprocess_image(image_bytes: bytes) -> bytes:
 # ── Stage 1: Google Vision → raw paragraphs + geometry styles ─
 
 def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], list[dict], list[str]]:
-    """
-    Calls Google Vision DOCUMENT_TEXT_DETECTION.
-
-    Returns:
-        paragraphs  — list of text strings (ground truth, never invented)
-        styles      — list of style dicts derived from bounding box geometry
-        warnings    — list of human-readable warning strings
-
-    FIX 2: Uses Vision's per-word confidence scores to flag uncertain words
-            with [?:word] markers instead of silently dropping them.
-    FIX 4: Tracks whether any italic was detected so the audit can warn the user.
-    """
     log("STAGE 1 — Google Vision DOCUMENT_TEXT_DETECTION")
     t0      = time.time()
     api_key = os.getenv("GOOGLE_VISION_API_KEY")
@@ -335,9 +352,7 @@ def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], li
     styles          = []
     warnings        = []
     low_conf_count  = 0
-    italic_detected = False   # FIX 4 tracking
 
-    # ── Collect all paragraph heights for relative font-size calculation ──
     all_heights = []
     for block in blocks:
         for para in block.get("paragraphs", []):
@@ -350,48 +365,23 @@ def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], li
     median_h = sorted(all_heights)[len(all_heights) // 2] if all_heights else 20
 
     for block in blocks:
-
-        # FIX 4: Check block-level detected_languages for italic hints
-        # (Vision sometimes surfaces this in the block property)
-        block_props = block.get("blockType", "")
-
         for para in block.get("paragraphs", []):
-            # ── FIX 2: Build text with confidence-flagged words ───────
             words        = para.get("words", [])
             word_strings = []
 
             for word in words:
-                confidence  = word.get("confidence", 1.0)
-                word_text   = "".join(
+                confidence = word.get("confidence", 1.0)
+                word_text  = "".join(
                     s.get("text", "") for s in word.get("symbols", [])
                 )
-
-                # FIX 4: Check symbol-level detected_breaks / properties
-                # for italic detection (not always available)
-                for sym in word.get("symbols", []):
-                    props = sym.get("property", {})
-                    for dw in props.get("detectedLanguages", []):
-                        pass   # placeholder — Vision doesn't expose italic directly
-                # Vision doesn't expose italic at symbol level reliably;
-                # we track that we checked and warn the user (see _audit below)
-
-                # BEFORE
-                # if confidence < 0.7:
-                #     word_strings.append(f"[?:{word_text}]")
-                #     low_conf_count += 1
-                # else:
-                #     word_strings.append(word_text)
-
-                # AFTER
                 word_strings.append(word_text)
                 if confidence < 0.7:
-                    low_conf_count += 1  # still track count for the audit log, just don't show markers
+                    low_conf_count += 1
 
             text = " ".join(word_strings).strip()
             if not text:
                 continue
 
-            # ── Bounding box geometry ─────────────────────────────────
             verts = para.get("boundingBox", {}).get("vertices", [])
             if len(verts) < 4:
                 continue
@@ -403,13 +393,9 @@ def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], li
             height = abs(bottom - top)
             center = (left + right) / 2
 
-            # ── Deterministic style rules ─────────────────────────────
-
-            # Font size proportional to median body height
             font_size = round(12 * (height / median_h), 1)
             font_size = max(8, min(font_size, 32))
 
-            # Heading: significantly larger than median
             is_heading    = height > median_h * 1.4
             heading_level = (
                 1 if height > median_h * 2.0 else
@@ -418,7 +404,6 @@ def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], li
                 0
             )
 
-            # Alignment from x-position relative to page width
             text_width = right - left
             if abs(center - page_width / 2) < page_width * 0.05 and text_width < page_width * 0.7:
                 alignment = "center"
@@ -435,7 +420,7 @@ def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], li
             paragraphs.append(text)
             styles.append({
                 "bold":         bold,
-                "italic":       False,   # Vision API does not expose italic reliably
+                "italic":       False,
                 "underline":    False,
                 "fontSize":     font_size,
                 "alignment":    alignment,
@@ -447,17 +432,12 @@ def stage1_vision_extract_with_layout(image_bytes: bytes) -> tuple[list[str], li
                 "headingLevel": heading_level,
             })
 
-    # ── Build warnings list ───────────────────────────────────────────
-
-    # FIX 2: warn if low-confidence words were found
     if low_conf_count > 0:
         warnings.append(
-            f"{low_conf_count} word(s) had low OCR confidence (< 70%) "
-            f"and are marked with [?:...] in the output. "
-            f"Review these before submitting the document."
+            f"{low_conf_count} word(s) had low OCR confidence (< 70%). "
+            f"Review the output carefully before submitting the document."
         )
 
-    # FIX 4: warn that italic is not preserved (always, because Vision can't expose it)
     warnings.append(
         "Italic formatting cannot be detected by the Vision API and is not preserved. "
         "If the original document uses italic text, apply it manually in Word."
@@ -489,10 +469,6 @@ def _make_text_node(text: str, style: dict) -> dict:
 
 
 def stage3_to_tiptap(paragraphs: list[str], styles: list[dict]) -> dict:
-    """
-    Converts Vision paragraphs + geometry styles into TipTap JSON.
-    Pure local logic — zero LLM calls, zero hallucination risk.
-    """
     log("STAGE 3 — Build TipTap JSON (local, no LLM)")
     content = []
 
@@ -549,35 +525,23 @@ def stage3_to_tiptap(paragraphs: list[str], styles: list[dict]) -> dict:
 # ── Master pipeline ───────────────────────────────────────────
 
 def parse_document(image_bytes: bytes) -> dict:
-    """
-    Full pipeline:
-      1. preprocess_image             (FIX 1 — deskew + denoise + upscale)
-      2. stage1_vision_extract_with_layout  (Vision OCR + geometry styles + confidence flags)
-      3. stage3_to_tiptap             (local TipTap JSON — zero LLM)
-    """
-    log("START parse_document — v3.1 STRICT DETERMINISTIC MODE")
+    log("START parse_document — v3.2 GCP-NATIVE MODE")
     t0 = time.time()
 
-    # FIX 1 — Pre-process before sending to Vision
     image_bytes = preprocess_image(image_bytes)
-
-    # Stage 1 — Vision: text + styles + warnings
     paragraphs, styles, warnings = stage1_vision_extract_with_layout(image_bytes)
 
     if not paragraphs:
         raise ValueError("Stage 1 returned no paragraphs")
 
-    # Stage 3 — Local TipTap builder (no LLM)
     doc = stage3_to_tiptap(paragraphs, styles)
-
-    # Audit block — includes FIX 2 + FIX 4 warnings
     doc["_audit"] = {
         "hallucination_risk": "zero",
         "styling_source":     "vision_geometry",
         "pipeline_seconds":   round(time.time() - t0, 2),
         "engine_version":     ENGINE_VERSION,
         "paragraph_count":    len(paragraphs),
-        "warnings":           warnings,   # FIX 2 + FIX 4
+        "warnings":           warnings,
     }
 
     log("SUCCESS", f"total={doc['_audit']['pipeline_seconds']}s | warnings={len(warnings)}")
@@ -585,25 +549,27 @@ def parse_document(image_bytes: bytes) -> dict:
 
 
 def run_ocr_job(jobId: str):
+    """Background task: reads file from GCS, runs OCR, writes result to Firestore."""
     try:
         log("JOB START", jobId)
         job = load_job(jobId)
         if not job:
-            raise RuntimeError("Job not found in Redis — possible cold start race condition")
+            raise RuntimeError("Job not found in Firestore")
         update_job(jobId, state="processing")
 
-        file_path = job.get("filePath")
-        if not file_path or not os.path.exists(file_path):
-            raise RuntimeError(f"File not found: {file_path!r}")
+        gcs_path = job.get("filePath")
+        if not gcs_path:
+            raise RuntimeError("filePath missing from job record")
 
-        with open(file_path, "rb") as f:
-            raw_bytes = f.read()
+        # ── Download file from GCS (not local disk) ───────────
+        raw_bytes = gcs_download(gcs_path)
 
         image_bytes = pdf_to_image_bytes(raw_bytes) if is_pdf(raw_bytes) else to_png_bytes(raw_bytes)
         document    = parse_document(image_bytes)
 
         update_job(jobId, state="ready", contentJson=document)
         log("JOB DONE", jobId)
+
     except Exception as e:
         error_detail = repr(e)
         log("JOB ERROR", error_detail)
@@ -1167,8 +1133,13 @@ async def start_handwritten_process(payload: ProcessRequest, background_tasks: B
 @app.post("/api/job-register")
 async def register_job(payload: dict):
     jobId = payload["jobId"]
-    update_job(jobId, filePath=payload["filePath"], source=payload.get("source", "scanned"),
-               strict=payload.get("strict", True), state="uploaded")
+    update_job(
+        jobId,
+        filePath=payload["filePath"],
+        source=payload.get("source", "scanned"),
+        strict=payload.get("strict", True),
+        state="uploaded",
+    )
     return {"ok": True}
 
 
@@ -1197,14 +1168,15 @@ async def detect_pdf_type_route(file: UploadFile = File(...)):
 
 
 class ExportRequest(BaseModel):
-    filePath: str
+    filePath: str   # GCS path
 
 @app.post("/api/export-digital-docx")
 async def export_digital_docx(payload: ExportRequest):
-    if not os.path.exists(payload.filePath):
-        raise HTTPException(status_code=400, detail="FILE_NOT_FOUND")
-    with open(payload.filePath, "rb") as f:
-        pdf_bytes = f.read()
+    try:
+        pdf_bytes = gcs_download(payload.filePath)
+    except Exception:
+        raise HTTPException(status_code=400, detail="FILE_NOT_FOUND_IN_GCS")
+
     pdf      = fitz.open(stream=pdf_bytes, filetype="pdf")
     word_doc = Document()
     s = word_doc.sections[0]
@@ -1228,12 +1200,19 @@ async def export_digital_docx(payload: ExportRequest):
 
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
+    """
+    Upload a file to GCS.
+    Returns {"filePath": "<gcs_path>"} — same response shape as the old local version.
+    The frontend does NOT need to change.
+    """
     try:
-        os.makedirs("uploads", exist_ok=True)
-        file_path = os.path.join("uploads", f"{datetime.now().timestamp()}_{file.filename}")
-        with open(file_path, "wb") as f:
-            f.write(await file.read())
-        return {"filePath": file_path}
+        data        = await file.read()
+        timestamp   = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        safe_name   = re.sub(r"[^\w.\-]", "_", file.filename or "upload")
+        gcs_path    = f"uploads/{timestamp}_{safe_name}"
+        content_type = file.content_type or "application/octet-stream"
+        gcs_upload(data, gcs_path, content_type)
+        return {"filePath": gcs_path}
     except Exception:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="UPLOAD_FAILED")
@@ -1262,22 +1241,16 @@ async def parse_document_route(
 
 @app.get("/api/job-file")
 async def serve_job_file(path: str):
-    uploads_dir = os.path.abspath("uploads")
-    abs_path    = os.path.abspath(path)
-
-    if not abs_path.startswith(uploads_dir):
-        raise HTTPException(status_code=403, detail="FORBIDDEN")
-
-    if not os.path.exists(abs_path):
+    """
+    Serve a file stored in GCS back to the client.
+    path = GCS blob path (e.g. uploads/123_scan.pdf)
+    """
+    try:
+        data     = gcs_download(path)
+        mime, _  = mimetypes.guess_type(path)
+        return Response(content=data, media_type=mime or "application/octet-stream")
+    except Exception:
         raise HTTPException(status_code=404, detail="FILE_NOT_FOUND")
-
-    mime, _ = mimetypes.guess_type(abs_path)
-    mime    = mime or "application/octet-stream"
-
-    with open(abs_path, "rb") as f:
-        data = f.read()
-
-    return Response(content=data, media_type=mime)
 
 
 class GenerateDocxRequest(BaseModel):
@@ -1320,6 +1293,11 @@ async def generate_docx_route(payload: GenerateDocxRequest):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "engine": ENGINE_VERSION}
 
 
 if __name__ == "__main__":
